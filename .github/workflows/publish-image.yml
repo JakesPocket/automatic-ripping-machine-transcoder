@@ -60,20 +60,6 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
-  notify-parent:
-    needs: [publish-nvidia, publish-amd, publish-intel]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release'
-    steps:
-      - name: Update submodule in ARM-neu
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          gh api repos/uprightbass360/automatic-ripping-machine-neu/dispatches \
-            --method POST --input - <<'EOF'
-          {"event_type":"component-release","client_payload":{"component":"transcoder"}}
-          EOF
-
   publish-amd:
     runs-on: ubuntu-latest
     steps:
