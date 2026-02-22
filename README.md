@@ -2,13 +2,11 @@
 
 # ARM Transcoder
 
-Part of the [Automatic Ripping Machine ecosystem](#related-projects). Originally built as a companion service for the upstream [Automatic Ripping Machine](https://github.com/automatic-ripping-machine/automatic-ripping-machine) project.
-
-Hardware-accelerated transcoding service that offloads encoding from your ARM ripper to a dedicated transcode server. Supports NVIDIA, AMD, and Intel GPUs, or CPU-only software encoding.
+Part of the [Automatic Ripping Machine ecosystem](#related-projects). Hardware-accelerated transcoding service that offloads encoding from your ARM ripper to a dedicated transcode server. Supports NVIDIA, AMD, and Intel GPUs, or CPU-only software encoding.
 
 ## Related Projects
 
-This transcoder is part of a suite of projects that extend and improve the Automatic Ripping Machine:
+Part of the Automatic Ripping Machine ecosystem:
 
 | Project | Description |
 |---------|-------------|
@@ -413,8 +411,6 @@ See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for setup and troubleshooti
 
 ## Testing
 
-The project includes 332 tests covering unit, integration, and security testing.
-
 ```bash
 # Install test dependencies
 pip install -r requirements-test.txt
@@ -423,68 +419,6 @@ pip install -r requirements-test.txt
 python -m pytest tests/ -v
 ```
 
-| Test File | Tests | Coverage |
-|-----------|-------|----------|
-| `test_utils.py` | 48 | PathValidator, CommandValidator, disk space, title cleaning |
-| `test_transcoder.py` | 123 | GPU detection, encoder family routing, FFmpeg commands, file/audio discovery, resolution detection, preset selection, source path resolution |
-| `test_security.py` | 43 | Path traversal, injection, payload attacks, auth bypass |
-| `test_models.py` | 34 | Pydantic validation, enums, data models |
-| `test_auth.py` | 27 | API key auth, webhook secret, config validation |
-| `test_integration.py` | 33 | Full pipeline: job lifecycle, retry/delete, startup restore, audio passthrough, 4K preset selection |
-| `test_api.py` | 23 | All API endpoints via async HTTP client |
-
-## Directory Structure
-
-```
-automatic-ripping-machine-transcoder/
-├── docker-compose.yml          # NVIDIA GPU
-├── docker-compose.amd.yml      # AMD Radeon (VAAPI)
-├── docker-compose.intel.yml    # Intel Quick Sync
-├── docker-compose.dev.yml      # Development / software encoding
-├── Dockerfile                  # NVIDIA container
-├── Dockerfile.amd              # AMD VAAPI container
-├── Dockerfile.intel            # Intel QSV container
-├── Dockerfile.dev              # Development container
-├── requirements.txt            # Python dependencies
-├── requirements-test.txt       # Test dependencies
-├── .env.example                # Environment template
-├── pytest.ini                  # Test configuration
-├── src/
-│   ├── main.py                 # FastAPI application & endpoints
-│   ├── config.py               # Settings management
-│   ├── models.py               # Pydantic & SQLAlchemy models
-│   ├── database.py             # SQLite async setup
-│   ├── transcoder.py           # Background transcode worker
-│   ├── auth.py                 # API key authentication
-│   ├── utils.py                # Path/command validators, utilities
-│   └── constants.py            # Named constants & validation lists
-├── tests/
-│   ├── conftest.py             # Shared test fixtures
-│   ├── test_utils.py           # Validator & utility tests
-│   ├── test_models.py          # Data model tests
-│   ├── test_auth.py            # Auth & config tests
-│   ├── test_api.py             # API endpoint tests
-│   ├── test_security.py        # Security attack tests
-│   ├── test_transcoder.py      # Worker unit tests
-│   └── test_integration.py     # Full pipeline tests
-├── docs/
-│   ├── IMPLEMENTATION_SPEC.md      # Improvement roadmap
-│   ├── AUTHENTICATION.md           # Auth setup guide
-│   └── proxmox-lxc-setup.md       # Proxmox deployment
-├── config/
-│   └── arm/
-│       ├── arm.yaml              # ARM config overlay
-│       └── notify_transcoder.sh  # Authenticated webhook + local→shared move
-├── presets/
-│   └── nvenc_presets.json      # HandBrake presets (NVIDIA)
-└── scripts/
-    ├── lxc-host-create.sh         # Create LXC container (run on Proxmox host)
-    ├── lxc-guest-install.sh       # Install transcoder (run inside LXC)
-    ├── setup-arm.sh              # ARM ripper configuration automation
-    ├── setup-drive-watcher.sh    # Optical drive watcher for container restart
-    └── setup-optical-symlinks.sh # Stable /dev/ symlinks for optical drives
-```
-
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+[MIT License](LICENSE)
