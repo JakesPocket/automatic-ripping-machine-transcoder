@@ -6,6 +6,18 @@ Part of the [Automatic Ripping Machine ecosystem](#related-projects). Originally
 
 Hardware-accelerated transcoding service that offloads encoding from your ARM ripper to a dedicated transcode server. Supports NVIDIA, AMD, and Intel GPUs, or CPU-only software encoding.
 
+## Related Projects
+
+This transcoder is part of a suite of projects that extend and improve the Automatic Ripping Machine:
+
+| Project | Description |
+|---------|-------------|
+| [automatic-ripping-machine-neu](https://github.com/uprightbass360/automatic-ripping-machine-neu) | Fork of the original ARM with bug fixes and improvements |
+| [automatic-ripping-machine-ui](https://github.com/uprightbass360/automatic-ripping-machine-ui) | Modern replacement dashboard (SvelteKit + FastAPI) |
+| **automatic-ripping-machine-transcoder** | GPU-accelerated transcoding service (this project) |
+
+The original upstream project: [automatic-ripping-machine/automatic-ripping-machine](https://github.com/automatic-ripping-machine/automatic-ripping-machine)
+
 ## Architecture
 
 ```mermaid
@@ -53,10 +65,10 @@ flowchart TB
 Pre-built images are published to Docker Hub on every release:
 
 ```bash
-docker pull uprightbass360/arm-transcoder:latest          # NVIDIA (default)
-docker pull uprightbass360/arm-transcoder:0.2.0-nvidia    # NVIDIA (pinned)
-docker pull uprightbass360/arm-transcoder:0.2.0-amd       # AMD Radeon
-docker pull uprightbass360/arm-transcoder:0.2.0-intel     # Intel QSV
+docker pull uprightbass360/arm-transcoder:latest            # NVIDIA (default)
+docker pull uprightbass360/arm-transcoder:latest-nvidia     # NVIDIA (explicit)
+docker pull uprightbass360/arm-transcoder:latest-amd        # AMD Radeon
+docker pull uprightbass360/arm-transcoder:latest-intel      # Intel QSV
 ```
 
 For the full ecosystem quick start (ARM + UI + Transcoder), see the [ARM-neu README](https://github.com/uprightbass360/automatic-ripping-machine-neu#quick-start).
@@ -401,7 +413,7 @@ See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for setup and troubleshooti
 
 ## Testing
 
-The project includes 293 tests covering unit, integration, and security testing.
+The project includes 332 tests covering unit, integration, and security testing.
 
 ```bash
 # Install test dependencies
@@ -414,12 +426,12 @@ python -m pytest tests/ -v
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
 | `test_utils.py` | 48 | PathValidator, CommandValidator, disk space, title cleaning |
-| `test_transcoder.py` | 90 | GPU detection, encoder family routing, FFmpeg commands, file/audio discovery, resolution detection, preset selection, source path resolution |
+| `test_transcoder.py` | 123 | GPU detection, encoder family routing, FFmpeg commands, file/audio discovery, resolution detection, preset selection, source path resolution |
 | `test_security.py` | 43 | Path traversal, injection, payload attacks, auth bypass |
 | `test_models.py` | 34 | Pydantic validation, enums, data models |
 | `test_auth.py` | 27 | API key auth, webhook secret, config validation |
-| `test_integration.py` | 31 | Full pipeline: job lifecycle, retry/delete, startup restore, audio passthrough, 4K preset selection |
-| `test_api.py` | 21 | All API endpoints via async HTTP client |
+| `test_integration.py` | 33 | Full pipeline: job lifecycle, retry/delete, startup restore, audio passthrough, 4K preset selection |
+| `test_api.py` | 23 | All API endpoints via async HTTP client |
 
 ## Directory Structure
 
@@ -472,18 +484,6 @@ automatic-ripping-machine-transcoder/
     ├── setup-drive-watcher.sh    # Optical drive watcher for container restart
     └── setup-optical-symlinks.sh # Stable /dev/ symlinks for optical drives
 ```
-
-## Related Projects
-
-This transcoder is part of a suite of projects that extend and improve the Automatic Ripping Machine:
-
-| Project | Description |
-|---------|-------------|
-| [automatic-ripping-machine-neu](https://github.com/uprightbass360/automatic-ripping-machine-neu) | Fork of the original ARM with bug fixes and improvements |
-| [automatic-ripping-machine-ui](https://github.com/uprightbass360/automatic-ripping-machine-ui) | Modern replacement dashboard (SvelteKit + FastAPI) |
-| **automatic-ripping-machine-transcoder** | GPU-accelerated transcoding service (this project) |
-
-The original upstream project: [automatic-ripping-machine/automatic-ripping-machine](https://github.com/automatic-ripping-machine/automatic-ripping-machine)
 
 ## License
 
