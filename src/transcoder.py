@@ -758,6 +758,9 @@ class TranscodeWorker:
         # Audio handling
         if settings.audio_encoder == "copy":
             cmd.extend(["--aencoder", "copy"])
+            # Override preset's CopyMask so all common codecs pass through
+            cmd.extend(["--audio-copy-mask",
+                         "aac,ac3,eac3,dts,dtshd,truehd,flac,mp3,opus"])
         else:
             cmd.extend(["--aencoder", settings.audio_encoder])
 
