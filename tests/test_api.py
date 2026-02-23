@@ -255,11 +255,25 @@ class TestWebhookEndpoint:
         assert data.get("status") == "error" or response.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_webhook_path_with_slash_rejected(self, client):
-        """Path with slashes should be rejected (directory name only)."""
+    async def test_webhook_path_with_subdirectory_accepted(self, client):
+        """Relative subdirectory paths should be accepted (e.g. movies/Title (Year))."""
         payload = {
             "title": "Rip complete",
-            "path": "some/nested/path",
+            "path": "movies/The Babysitter (1969)",
+            "status": "success",
+        }
+        response = await client.post("/webhook/arm", json=payload)
+        data = response.json()
+        assert data.get("status") in ("queued", "error")
+        # Should not be rejected for path validation reasons
+        assert data.get("reason") != "invalid path"
+
+    @pytest.mark.asyncio
+    async def test_webhook_path_with_backslash_rejected(self, client):
+        """Paths with backslashes should be rejected."""
+        payload = {
+            "title": "Rip complete",
+            "path": "some\\nested\\path",
             "status": "success",
         }
         response = await client.post("/webhook/arm", json=payload)
