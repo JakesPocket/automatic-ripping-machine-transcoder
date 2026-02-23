@@ -347,8 +347,9 @@ async def arm_webhook(
         logger.warning(f"Could not determine path from webhook: {payload.title}")
         return {"status": "error", "reason": "could not determine source path"}
 
-    # Security: Validate path is just a directory name (no traversal)
-    if "/" in source_path or "\\" in source_path or ".." in source_path:
+    # Security: reject traversal attempts but allow relative subdirectories
+    # (e.g. "movies/Title (Year)" is valid, ".." and "\" are not)
+    if "\\" in source_path or ".." in source_path:
         logger.warning(f"Rejected path with traversal attempt: {source_path}")
         return {"status": "error", "reason": "invalid path"}
 
