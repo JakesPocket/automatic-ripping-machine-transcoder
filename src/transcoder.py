@@ -760,7 +760,8 @@ class TranscodeWorker:
             cmd.extend(["--aencoder", "copy"])
             # Override preset's CopyMask so all common codecs pass through
             cmd.extend(["--audio-copy-mask",
-                         "aac,ac3,eac3,dts,dtshd,truehd,flac,mp3,opus"])
+                         "aac,ac3,eac3,dts,dtshd,truehd,flac,mp2,mp3"])
+            cmd.extend(["--audio-fallback", "aac"])
         else:
             cmd.extend(["--aencoder", settings.audio_encoder])
 
