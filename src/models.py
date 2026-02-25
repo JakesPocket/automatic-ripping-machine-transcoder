@@ -123,12 +123,14 @@ class WebhookPayload(BaseModel):
 
         return cleaned.strip()
 
-    @field_validator("job_id")
+    @field_validator("job_id", mode="before")
     @classmethod
-    def validate_job_id(cls, v: Optional[str]) -> Optional[str]:
-        """Validate job_id field."""
+    def coerce_job_id(cls, v):
+        """Coerce job_id to string (ARM sends int) and validate."""
         if v is None:
             return v
+
+        v = str(v)
 
         # Allow only alphanumeric, hyphens, and underscores
         import re
