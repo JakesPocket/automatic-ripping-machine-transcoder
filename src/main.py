@@ -5,6 +5,7 @@ ARM Transcoder - Webhook receiver and transcode orchestrator
 import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 import platform
 import re
 from contextlib import asynccontextmanager
@@ -92,10 +93,22 @@ async def lifespan(app: FastAPI):
     logger.info("ARM Transcoder stopped")
 
 
+def _read_version() -> str:
+    for p in ("VERSION", os.path.join(os.path.dirname(__file__), "VERSION")):
+        try:
+            with open(p) as f:
+                return f.read().strip()
+        except OSError:
+            continue
+    return "unknown"
+
+
+APP_VERSION = _read_version()
+
 app = FastAPI(
     title="ARM Transcoder",
     description="GPU-accelerated transcoding service for Automatic Ripping Machine",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -106,6 +119,7 @@ async def health_check():
     gpu_support = worker.gpu_support if worker else {}
     return {
         "status": "healthy",
+        "version": APP_VERSION,
         "worker_running": worker is not None and worker.is_running,
         "queue_size": worker.queue_size if worker else 0,
         "gpu_support": gpu_support,
