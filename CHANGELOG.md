@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.1.3-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.2-alpha.1...v10.1.3-alpha.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* add defaults for volume paths, fix stale image namespace ([05408b4](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/05408b43e3b811d6514a8866f46ff4d8f4c47b36))
+
 ## [10.1.2-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.1-alpha.1...v10.1.2-alpha.1) (2026-02-25)
 
 
