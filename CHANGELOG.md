@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.1.2-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.1-alpha.1...v10.1.2-alpha.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* coerce job_id to string in webhook payload validation ([802d83f](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/802d83f507c3ff877c2dbb6bf855cff157306b16))
+
 ## [10.1.1-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.0-alpha.1...v10.1.1-alpha.1) (2026-02-25)
 
 
