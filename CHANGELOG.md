@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.1.1-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.0-alpha.1...v10.1.1-alpha.1) (2026-02-25)
+
+
+### Bug Fixes
+
+* use constant-time comparison for API key and webhook secret auth ([2fc4441](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/2fc4441ce77427e244d056237bdd70e84871c7b2))
+
 ## [10.1.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.0.0-alpha.1...v10.1.0-alpha.1) (2026-02-25)
 
 
