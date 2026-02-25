@@ -2,6 +2,7 @@
 Simple API key authentication for ARM Transcoder
 """
 
+import hmac
 import logging
 from typing import Optional
 
@@ -72,10 +73,14 @@ class APIKeyAuth:
                 headers={"WWW-Authenticate": "ApiKey"},
             )
 
-        # Verify key
-        role = self.keys.get(api_key)
+        # Verify key (constant-time lookup via hmac.compare_digest)
+        role = None
+        for known_key, known_role in self.keys.items():
+            if hmac.compare_digest(api_key, known_key):
+                role = known_role
+                break
         if not role:
-            logger.warning(f"Invalid API key attempt: {api_key[:8]}...")
+            logger.warning("Invalid API key attempt")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid API key",
@@ -168,7 +173,7 @@ def verify_webhook_secret(
             detail="Webhook secret required",
         )
 
-    if x_webhook_secret != settings.webhook_secret:
+    if not hmac.compare_digest(x_webhook_secret, settings.webhook_secret):
         logger.warning("Invalid webhook secret attempt")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
