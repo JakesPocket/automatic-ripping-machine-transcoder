@@ -42,8 +42,10 @@ services:
       - MAX_RETRY_COUNT=${MAX_RETRY_COUNT:-3}
       - LOG_PATH=/data/logs
     volumes:
-      - ${HOST_RAW_PATH}:/data/raw:ro
-      - ${HOST_COMPLETED_PATH}:/data/completed:rw
+      # Shared storage — set in .env to match your NFS/SMB mount points
+      - ${HOST_RAW_PATH:-./raw}:/data/raw:ro
+      - ${HOST_COMPLETED_PATH:-./completed}:/data/completed:rw
+      # Local paths
       - ${WORK_PATH:-./work}:/data/work:rw
       - ${DB_PATH:-./data}:/data/db:rw
       - ${PRESET_PATH:-./presets}:/config/presets:ro
@@ -64,7 +66,7 @@ services:
 
   # Optional: Run ARM ripper alongside (uncomment if desired)
   # arm-rippers:
-  #   image: automaticrippingmachine/automatic-ripping-machine:latest
+  #   image: uprightbass360/automatic-ripping-machine:latest
   #   container_name: arm-rippers
   #   restart: always
   #   privileged: true
