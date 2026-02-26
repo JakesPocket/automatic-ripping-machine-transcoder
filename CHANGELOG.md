@@ -1,5 +1,17 @@
 # Changelog
 
+## [10.2.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.3-alpha.1...v10.2.0-alpha.1) (2026-02-26)
+
+
+### Features
+
+* unified multi-GPU Dockerfile with HandBrake 1.10.2 ([37e8b2c](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/37e8b2c1f572d8ba5eefce37e6b820091ab1add1))
+
+
+### Bug Fixes
+
+* update webhook title fallback test for new extraction logic ([9776b05](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/9776b054eeb859ac4af5969f8dbef7f122a3425c))
+
 ## [10.1.3-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.2-alpha.1...v10.1.3-alpha.1) (2026-02-25)
 
 
