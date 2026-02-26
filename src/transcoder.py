@@ -31,6 +31,7 @@ def check_gpu_support() -> dict:
     """Check which GPU encoders are available (NVENC, VAAPI, AMF, QSV)."""
     result = {
         "handbrake_nvenc": False,
+        "handbrake_qsv": False,
         "ffmpeg_nvenc_h265": False,
         "ffmpeg_nvenc_h264": False,
         "ffmpeg_vaapi_h265": False,
@@ -42,14 +43,17 @@ def check_gpu_support() -> dict:
         "vaapi_device": False,
     }
 
-    # Check HandBrake NVENC
+    # Check HandBrake encoder support (NVENC, QSV)
     try:
         output = subprocess.run(
             ["HandBrakeCLI", "--help"],
             capture_output=True, text=True, timeout=10
         )
-        if "nvenc" in output.stdout.lower() or "nvenc" in output.stderr.lower():
+        combined = output.stdout.lower() + output.stderr.lower()
+        if "nvenc" in combined:
             result["handbrake_nvenc"] = True
+        if "qsv" in combined:
+            result["handbrake_qsv"] = True
     except Exception:
         pass
 
@@ -151,6 +155,9 @@ class TranscodeWorker:
             logger.info("Using FFmpeg with AMF (AMD)")
             return "ffmpeg"
         elif family == "qsv":
+            if self._gpu_support.get("handbrake_qsv"):
+                logger.info("Using HandBrake with QSV")
+                return "handbrake"
             logger.info("Using FFmpeg with Quick Sync (Intel)")
             return "ffmpeg"
         elif family == "software":

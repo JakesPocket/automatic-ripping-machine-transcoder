@@ -1,8 +1,10 @@
 services:
   arm-transcoder:
+    image: uprightbass360/arm-transcoder:${TRANSCODER_VERSION:-latest}-intel
     build:
       context: .
-      dockerfile: Dockerfile.intel
+      args:
+        GPU_VARIANT: intel
     container_name: arm-transcoder-intel
     restart: unless-stopped
     ports:
@@ -10,6 +12,9 @@ services:
     environment:
       - TZ=${TZ:-America/New_York}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # User identity — match ARM_UID/ARM_GID for NFS compatibility
+      - TRANSCODER_UID=${TRANSCODER_UID:-1001}
+      - TRANSCODER_GID=${TRANSCODER_GID:-1000}
       # Paths inside container
       - RAW_PATH=/data/raw
       - COMPLETED_PATH=/data/completed

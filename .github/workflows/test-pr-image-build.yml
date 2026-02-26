@@ -13,6 +13,16 @@ jobs:
     permissions:
       contents: read
 
+    strategy:
+      matrix:
+        include:
+          - variant: nvidia
+            suffix: ""
+          - variant: amd
+            suffix: "-amd"
+          - variant: intel
+            suffix: "-intel"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -20,28 +30,11 @@ jobs:
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image (NVIDIA)
+      - name: Build Docker image (${{ matrix.variant }})
         uses: docker/build-push-action@v6
         with:
           push: false
           context: .
+          build-args: GPU_VARIANT=${{ matrix.variant }}
           platforms: linux/amd64
-          tags: arm-transcoder:pr${{ github.event.number }}
-
-      - name: Build Docker image (AMD)
-        uses: docker/build-push-action@v6
-        with:
-          push: false
-          context: .
-          file: Dockerfile.amd
-          platforms: linux/amd64
-          tags: arm-transcoder:pr${{ github.event.number }}-amd
-
-      - name: Build Docker image (Intel)
-        uses: docker/build-push-action@v6
-        with:
-          push: false
-          context: .
-          file: Dockerfile.intel
-          platforms: linux/amd64
-          tags: arm-transcoder:pr${{ github.event.number }}-intel
+          tags: arm-transcoder:pr${{ github.event.number }}${{ matrix.suffix }}

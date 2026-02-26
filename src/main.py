@@ -335,12 +335,35 @@ async def arm_webhook(
     # Determine source path
     source_path = payload.path
 
-    # Extract media title from body
-    # ARM notification formats:
+    # Normalize absolute paths from ARM host.
+    # The webhook sender (ARM's bash_notify or the UI's re-transcode) may
+    # include the full ARM host path (e.g. /home/arm/media/raw/Title).
+    # Inside this container the raw mount is at settings.raw_path (/data/raw),
+    # so we strip any leading directory prefix and keep only the final
+    # component(s) relative to the raw root.
+    if source_path and os.path.isabs(source_path):
+        # e.g. "/home/arm/media/raw/Title" → "Title"
+        # e.g. "/home/arm/media/raw/movies/Title" → "movies/Title"
+        # We can't know what the ARM-side raw path is, so take everything
+        # after the last path component that matches "raw".
+        parts = Path(source_path).parts  # ('/', 'home', 'arm', 'media', 'raw', 'Title')
+        try:
+            raw_idx = len(parts) - 1 - parts[::-1].index("raw")
+            source_path = str(Path(*parts[raw_idx + 1:])) if raw_idx + 1 < len(parts) else None
+        except ValueError:
+            # No "raw" component — just use the final directory name
+            source_path = Path(source_path).name
+        logger.debug(f"Normalized absolute path to: {source_path}")
+
+    # Extract media title from body or title field.
+    # ARM notification formats (body):
     #   "{title} rip complete. Starting transcode."  (NOTIFY_RIP)
     #   "{title} processing complete."               (NOTIFY_TRANSCODE)
     #   "Rip of {title} complete"                    (legacy/custom)
-    title_from_body = None
+    # UI re-transcode formats:
+    #   title: "ARM rip complete: {title}" / "Re-transcode: {title}"
+    #   body:  "{title} ({year})" or just "{title}"
+    media_title = None
     if body:
         for pattern in [
             r"^(.+?)\s+rip complete",           # ARM rip notification
@@ -349,12 +372,26 @@ async def arm_webhook(
         ]:
             match = re.search(pattern, body, re.IGNORECASE)
             if match:
-                title_from_body = match.group(1).strip()
+                media_title = match.group(1).strip()
                 break
 
+    # If body didn't match a known format, try extracting from title prefix
+    if not media_title:
+        for prefix in ["ARM rip complete:", "Re-transcode:"]:
+            if payload.title.startswith(prefix):
+                media_title = payload.title[len(prefix):].strip()
+                break
+
+    # Last resort: use the body itself as the title (UI sends plain title)
+    if not media_title and body:
+        # Strip trailing " (year)" if present — e.g. "The-Babysitter (1995)" → "The-Babysitter"
+        cleaned = re.sub(r"\s*\(\d{4}\)\s*$", "", body).strip()
+        if cleaned:
+            media_title = cleaned
+
     # Use extracted title as source path if no explicit path provided
-    if not source_path and title_from_body:
-        safe_title = Path(title_from_body).name
+    if not source_path and media_title:
+        safe_title = Path(media_title).name
         source_path = safe_title
 
     if not source_path:
@@ -375,7 +412,7 @@ async def arm_webhook(
         raise HTTPException(status_code=503, detail="Transcoder not ready")
 
     # Queue the transcode job — use extracted media title for output naming
-    job_title = title_from_body or payload.title
+    job_title = media_title or payload.title
     await worker.queue_job(
         source_path=full_path,
         title=job_title,
