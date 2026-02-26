@@ -137,19 +137,6 @@ class TestWebhookEndpoint:
         assert call_kwargs.kwargs["title"] == "some unrecognized format"
 
     @pytest.mark.asyncio
-    async def test_webhook_title_from_prefix(self, client, mock_worker):
-        """Extract media title from 'ARM rip complete: ...' title prefix."""
-        payload = {
-            "title": "ARM rip complete: The Movie",
-            "path": "The Movie",
-            "status": "success",
-        }
-        response = await client.post("/webhook/arm", json=payload)
-        assert response.status_code == 200
-        call_kwargs = mock_worker.queue_job.call_args
-        assert call_kwargs.kwargs["title"] == "The Movie"
-
-    @pytest.mark.asyncio
     async def test_apprise_message_field(self, client, mock_worker):
         """Apprise json:// sends 'message' instead of 'body' - should still work."""
         payload = {

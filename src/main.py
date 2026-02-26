@@ -360,9 +360,7 @@ async def arm_webhook(
     #   "{title} rip complete. Starting transcode."  (NOTIFY_RIP)
     #   "{title} processing complete."               (NOTIFY_TRANSCODE)
     #   "Rip of {title} complete"                    (legacy/custom)
-    # UI re-transcode formats:
-    #   title: "ARM rip complete: {title}" / "Re-transcode: {title}"
-    #   body:  "{title} ({year})" or just "{title}"
+    # UI sends plain title in both title and body fields.
     media_title = None
     if body:
         for pattern in [
@@ -375,16 +373,9 @@ async def arm_webhook(
                 media_title = match.group(1).strip()
                 break
 
-    # If body didn't match a known format, try extracting from title prefix
-    if not media_title:
-        for prefix in ["ARM rip complete:", "Re-transcode:"]:
-            if payload.title.startswith(prefix):
-                media_title = payload.title[len(prefix):].strip()
-                break
-
-    # Last resort: use the body itself as the title (UI sends plain title)
+    # If body didn't match a notification pattern, use it as the title directly.
+    # Strip trailing " (year)" if present — e.g. "The-Babysitter (1995)" → "The-Babysitter"
     if not media_title and body:
-        # Strip trailing " (year)" if present — e.g. "The-Babysitter (1995)" → "The-Babysitter"
         cleaned = re.sub(r"\s*\(\d{4}\)\s*$", "", body).strip()
         if cleaned:
             media_title = cleaned
