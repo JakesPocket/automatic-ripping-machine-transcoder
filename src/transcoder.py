@@ -340,21 +340,27 @@ class TranscodeWorker:
         job_handler = None
 
         try:
-            # Attach a per-job log file so each job gets its own clean log
-            job_handler = logging.FileHandler(
-                str(Path(settings.log_path) / logfile_name)
-            )
-            job_handler.setFormatter(json_formatter())
+            # Attach a per-job log file so each job gets its own clean log.
+            # Non-fatal: if the handler can't be created the global
+            # transcoder.log still captures everything.
+            try:
+                log_dir = Path(settings.log_path)
+                log_dir.mkdir(parents=True, exist_ok=True)
+                job_handler = logging.FileHandler(str(log_dir / logfile_name))
+                job_handler.setFormatter(json_formatter())
 
-            _job_id = job.id  # capture for filter closure
+                _job_id = job.id  # capture for filter closure
 
-            class _JobFilter(logging.Filter):
-                def filter(self, record):
-                    ctx = structlog.contextvars.get_contextvars()
-                    return ctx.get("job_id") == _job_id
+                class _JobFilter(logging.Filter):
+                    def filter(self, record):
+                        ctx = structlog.contextvars.get_contextvars()
+                        return ctx.get("job_id") == _job_id
 
-            job_handler.addFilter(_JobFilter())
-            logging.getLogger().addHandler(job_handler)
+                job_handler.addFilter(_JobFilter())
+                logging.getLogger().addHandler(job_handler)
+            except Exception:
+                logger.warning(f"Could not create per-job log file: {logfile_name}")
+                logfile_name = None
 
             # Update status to processing
             await self._update_job(
