@@ -73,9 +73,10 @@ def _configure_logging():
     root = logging.getLogger()
     root.setLevel(log_level)
 
-    # Silence noisy third-party loggers
-    for noisy in ("aiosqlite", "httpcore", "httpx", "uvicorn.access"):
-        logging.getLogger(noisy).setLevel(logging.WARNING)
+    # Third-party loggers at a separate (usually higher) level
+    lib_level = getattr(logging, settings.log_level_libraries)
+    for name in ("aiosqlite", "httpcore", "httpx", "uvicorn.access"):
+        logging.getLogger(name).setLevel(lib_level)
 
     # Console: colored human-readable (for docker logs)
     console = logging.StreamHandler()

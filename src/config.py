@@ -36,6 +36,7 @@ UPDATABLE_KEYS = {
     "minimum_free_space_gb",
     "max_retry_count",
     "log_level",
+    "log_level_libraries",
 }
 
 VALID_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -146,6 +147,10 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = Field("INFO", description="Logging level")
+    log_level_libraries: str = Field(
+        "WARNING",
+        description="Logging level for third-party libraries (aiosqlite, httpcore, httpx, uvicorn.access)",
+    )
 
     @field_validator("video_encoder")
     @classmethod
@@ -180,7 +185,7 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("log_level")
+    @field_validator("log_level", "log_level_libraries")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
         """Validate log level."""
