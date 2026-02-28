@@ -46,6 +46,7 @@ def _add_missing_columns(conn):
         migrations = [
             ("disctype", "VARCHAR(50)"),
             ("logfile", "VARCHAR(255)"),
+            ("poster_url", "VARCHAR(500)"),
         ]
         for col_name, col_type in migrations:
             if col_name not in existing:

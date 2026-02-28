@@ -198,6 +198,7 @@ class TranscodeWorker:
         video_type: Optional[str] = None,
         year: Optional[str] = None,
         disctype: Optional[str] = None,
+        poster_url: Optional[str] = None,
     ):
         """Add a job to the transcode queue."""
         async with get_db() as db:
@@ -216,6 +217,7 @@ class TranscodeWorker:
                     video_type=video_type,
                     year=year,
                     disctype=disctype,
+                    poster_url=poster_url,
                     status=JobStatus.PENDING,
                 )
                 db.add(job_db)

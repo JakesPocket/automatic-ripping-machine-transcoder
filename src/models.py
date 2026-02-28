@@ -62,6 +62,7 @@ class TranscodeJobDB(Base):
     total_tracks = Column(Integer, default=0)
     main_feature_file = Column(String(500), nullable=True)
     logfile = Column(String(255), nullable=True)
+    poster_url = Column(String(500), nullable=True)
 
 
 class WebhookPayload(BaseModel):
@@ -77,6 +78,7 @@ class WebhookPayload(BaseModel):
     video_type: Optional[str] = Field(None, max_length=50)
     year: Optional[str] = Field(None, max_length=10)
     disctype: Optional[str] = Field(None, max_length=50)
+    poster_url: Optional[str] = Field(None, max_length=500)
 
     @property
     def effective_body(self) -> Optional[str]:

@@ -431,6 +431,7 @@ async def arm_webhook(
         video_type=payload.video_type,
         year=payload.year,
         disctype=payload.disctype,
+        poster_url=payload.poster_url,
     )
 
     return {
@@ -488,6 +489,13 @@ async def list_jobs(
                     "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                     "error": job.error,
                     "logfile": job.logfile,
+                    "video_type": job.video_type,
+                    "year": job.year,
+                    "disctype": job.disctype,
+                    "arm_job_id": job.arm_job_id,
+                    "output_path": job.output_path,
+                    "total_tracks": job.total_tracks,
+                    "poster_url": job.poster_url,
                 }
                 for job in jobs
             ],
