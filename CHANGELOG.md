@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.5.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.4.0-alpha.1...v10.5.0-alpha.1) (2026-02-28)
+
+
+### Features
+
+* add poster_url to webhook payload, DB, and /jobs API ([2d2f059](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/2d2f059e176058b2c72125e7cfec872b032dfab7))
+
 ## [10.4.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.3.0-alpha.1...v10.4.0-alpha.1) (2026-02-28)
 
 
