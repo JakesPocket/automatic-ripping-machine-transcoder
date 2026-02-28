@@ -22,6 +22,7 @@ from constants import (
     PROGRESS_UPDATE_THRESHOLD,
 )
 from database import get_db
+from log_format import json_formatter
 from models import TranscodeJobDB, JobStatus, TranscodeJob
 from utils import check_sufficient_disk_space, clean_title_for_filesystem, estimate_transcode_size
 
@@ -335,13 +336,32 @@ class TranscodeWorker:
         )
 
         work_job_dir = Path(settings.work_path) / f"job-{job.id}"
+        logfile_name = f"job-{job.id}.log"
+        job_handler = None
 
         try:
+            # Attach a per-job log file so each job gets its own clean log
+            job_handler = logging.FileHandler(
+                str(Path(settings.log_path) / logfile_name)
+            )
+            job_handler.setFormatter(json_formatter())
+
+            _job_id = job.id  # capture for filter closure
+
+            class _JobFilter(logging.Filter):
+                def filter(self, record):
+                    ctx = structlog.contextvars.get_contextvars()
+                    return ctx.get("job_id") == _job_id
+
+            job_handler.addFilter(_JobFilter())
+            logging.getLogger().addHandler(job_handler)
+
             # Update status to processing
             await self._update_job(
                 job.id,
                 status=JobStatus.PROCESSING,
                 started_at=datetime.now(timezone.utc),
+                logfile=logfile_name,
             )
 
             # Resolve actual source path (ARM may move files to subdirectories)
@@ -482,6 +502,10 @@ class TranscodeWorker:
             if work_job_dir.exists():
                 shutil.rmtree(work_job_dir)
                 logger.info(f"Cleaned up work dir: {work_job_dir}")
+            # Remove per-job log handler
+            if job_handler:
+                logging.getLogger().removeHandler(job_handler)
+                job_handler.close()
             # Clean up progress tracking
             self._last_progress.pop(job.id, None)
             self._last_progress_time.pop(job.id, None)

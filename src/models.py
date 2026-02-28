@@ -61,6 +61,7 @@ class TranscodeJobDB(Base):
     disctype = Column(String(50), nullable=True)  # dvd, bluray, bluray4k
     total_tracks = Column(Integer, default=0)
     main_feature_file = Column(String(500), nullable=True)
+    logfile = Column(String(255), nullable=True)
 
 
 class WebhookPayload(BaseModel):

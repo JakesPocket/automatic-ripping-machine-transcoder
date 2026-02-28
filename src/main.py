@@ -26,34 +26,8 @@ from config import (
 from constants import SHUTDOWN_TIMEOUT, VALID_VIDEO_ENCODERS, VALID_AUDIO_ENCODERS, VALID_SUBTITLE_MODES
 from database import init_db, get_db
 from models import WebhookPayload, JobStatus, TranscodeJobDB, ConfigOverrideDB
+from log_format import _foreign_pre_chain, json_formatter, console_formatter
 from transcoder import TranscodeWorker
-
-_foreign_pre_chain = [
-    structlog.contextvars.merge_contextvars,
-    structlog.stdlib.add_log_level,
-    structlog.stdlib.add_logger_name,
-    structlog.processors.TimeStamper(fmt="iso"),
-]
-
-
-def _json_formatter():
-    return structlog.stdlib.ProcessorFormatter(
-        foreign_pre_chain=_foreign_pre_chain,
-        processors=[
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.processors.JSONRenderer(),
-        ],
-    )
-
-
-def _console_formatter():
-    return structlog.stdlib.ProcessorFormatter(
-        foreign_pre_chain=_foreign_pre_chain,
-        processors=[
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.dev.ConsoleRenderer(colors=True),
-        ],
-    )
 
 
 def _configure_logging():
@@ -80,7 +54,7 @@ def _configure_logging():
 
     # Console: colored human-readable (for docker logs)
     console = logging.StreamHandler()
-    console.setFormatter(_console_formatter())
+    console.setFormatter(console_formatter())
     root.addHandler(console)
 
     # File: JSON lines (machine-parseable)
@@ -89,7 +63,7 @@ def _configure_logging():
     fh = RotatingFileHandler(
         log_dir / "transcoder.log", maxBytes=10_485_760, backupCount=5
     )
-    fh.setFormatter(_json_formatter())
+    fh.setFormatter(json_formatter())
     root.addHandler(fh)
 
 
@@ -513,6 +487,7 @@ async def list_jobs(
                     "started_at": job.started_at.isoformat() if job.started_at else None,
                     "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                     "error": job.error,
+                    "logfile": job.logfile,
                 }
                 for job in jobs
             ],

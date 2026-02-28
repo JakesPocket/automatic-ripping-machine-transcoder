@@ -45,6 +45,7 @@ def _add_missing_columns(conn):
         existing = {c["name"] for c in inspector.get_columns("transcode_jobs")}
         migrations = [
             ("disctype", "VARCHAR(50)"),
+            ("logfile", "VARCHAR(255)"),
         ]
         for col_name, col_type in migrations:
             if col_name not in existing:
