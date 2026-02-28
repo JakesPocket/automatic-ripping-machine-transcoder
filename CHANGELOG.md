@@ -1,5 +1,17 @@
 # Changelog
 
+## [10.4.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.3.0-alpha.1...v10.4.0-alpha.1) (2026-02-28)
+
+
+### Features
+
+* per-job transcoder log files ([4510352](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/4510352d5439c7f5bb36e97070e546307f950729))
+
+
+### Bug Fixes
+
+* make per-job log handler creation non-fatal ([9dd2dc7](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/9dd2dc713a39ed07be4a84e017d5a1bc54060b75))
+
 ## [10.3.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.2.0-alpha.1...v10.3.0-alpha.1) (2026-02-28)
 
 
