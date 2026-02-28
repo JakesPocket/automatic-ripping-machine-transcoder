@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import psutil
+import structlog
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from sqlalchemy import select, delete, func
@@ -27,23 +28,63 @@ from database import init_db, get_db
 from models import WebhookPayload, JobStatus, TranscodeJobDB, ConfigOverrideDB
 from transcoder import TranscodeWorker
 
+_foreign_pre_chain = [
+    structlog.contextvars.merge_contextvars,
+    structlog.stdlib.add_log_level,
+    structlog.stdlib.add_logger_name,
+    structlog.processors.TimeStamper(fmt="iso"),
+]
+
+
+def _json_formatter():
+    return structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=_foreign_pre_chain,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.JSONRenderer(),
+        ],
+    )
+
+
+def _console_formatter():
+    return structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=_foreign_pre_chain,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.dev.ConsoleRenderer(colors=True),
+        ],
+    )
+
 
 def _configure_logging():
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+    )
+
     log_level = getattr(logging, settings.log_level)
-    fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     root = logging.getLogger()
     root.setLevel(log_level)
 
+    # Console: colored human-readable (for docker logs)
     console = logging.StreamHandler()
-    console.setFormatter(fmt)
+    console.setFormatter(_console_formatter())
     root.addHandler(console)
 
+    # File: JSON lines (machine-parseable)
     log_dir = Path(settings.log_path)
     log_dir.mkdir(parents=True, exist_ok=True)
     fh = RotatingFileHandler(
         log_dir / "transcoder.log", maxBytes=10_485_760, backupCount=5
     )
-    fh.setFormatter(fmt)
+    fh.setFormatter(_json_formatter())
     root.addHandler(fh)
 
 
@@ -573,6 +614,23 @@ async def list_logs(_role: str = Depends(get_current_user)):
     """List available log files."""
     from log_reader import list_logs as _list_logs
     return _list_logs()
+
+
+@app.get("/logs/{filename}/structured")
+async def get_structured_log(
+    filename: str,
+    mode: str = Query("tail", pattern="^(tail|full)$"),
+    lines: int = Query(100, ge=1, le=10000),
+    level: str | None = Query(None),
+    search: str | None = Query(None),
+    _role: str = Depends(get_current_user),
+):
+    """Read a structured (JSON lines) log file with optional filtering."""
+    from log_reader import read_structured_log
+    result = read_structured_log(filename, mode=mode, lines=lines, level=level, search=search)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Log file not found")
+    return result
 
 
 @app.get("/logs/{filename}")

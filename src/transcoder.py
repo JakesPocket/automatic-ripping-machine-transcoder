@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import structlog
 from sqlalchemy import select
 
 from config import settings
@@ -326,6 +327,13 @@ class TranscodeWorker:
         """
         logger.info(f"Processing job {job.id}: {job.title}")
 
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            job_id=job.id,
+            label=job.title,
+            arm_job_id=job.arm_job_id,
+        )
+
         work_job_dir = Path(settings.work_path) / f"job-{job.id}"
 
         try:
@@ -477,6 +485,7 @@ class TranscodeWorker:
             # Clean up progress tracking
             self._last_progress.pop(job.id, None)
             self._last_progress_time.pop(job.id, None)
+            structlog.contextvars.clear_contextvars()
 
     def _resolve_source_path(self, source_path: str) -> str:
         """Resolve the actual source path, searching subdirectories if needed.
@@ -600,6 +609,12 @@ class TranscodeWorker:
 
     async def _passthrough_audio(self, job: TranscodeJob):
         """Copy audio files directly to audio output folder (no transcoding)."""
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            job_id=job.id,
+            label=job.title,
+            arm_job_id=job.arm_job_id,
+        )
         clean_title = clean_title_for_filesystem(job.title)
         output_dir = Path(settings.completed_path) / settings.audio_subdir / clean_title
         os.makedirs(output_dir, exist_ok=True)
