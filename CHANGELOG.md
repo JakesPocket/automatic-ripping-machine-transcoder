@@ -1,5 +1,18 @@
 # Changelog
 
+## [10.3.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.2.0-alpha.1...v10.3.0-alpha.1) (2026-02-28)
+
+
+### Features
+
+* add LOG_LEVEL_LIBRARIES setting for third-party logger levels ([5fbef84](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/5fbef84a346d69b93dcdf93ca57fa0923fffceb1))
+* structured logging with structlog ([773b291](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/773b2917ec588ccdd6660843dafbf832b2911671))
+
+
+### Bug Fixes
+
+* silence noisy third-party loggers at WARNING level ([d6b8c72](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/d6b8c7207034593259cf56c5e0bfce6834639b76))
+
 ## [10.2.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.1.3-alpha.1...v10.2.0-alpha.1) (2026-02-26)
 
 
