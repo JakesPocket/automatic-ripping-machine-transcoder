@@ -1,5 +1,23 @@
 # Changelog
 
+## [10.6.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.5.0-alpha.1...v10.6.0-alpha.1) (2026-03-01)
+
+
+### Features
+
+* per-job transcode config overrides ([95d7b10](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/95d7b102bdecb13996668cd09bbf56d27a6437c1))
+* split Dockerfile into base image + thin GPU layers ([f3b3c3f](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/f3b3c3fee415d6f51554ab474c6b0b0d267c5004))
+
+
+### Bug Fixes
+
+* add --reload to Dockerfile.dev CMD for hot-reload support ([edd4d30](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/edd4d30dfc6b265b6039e9e274545b0c49c75ea9))
+* deduplicate webhook — skip if job already queued for same source ([866a924](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/866a9241be60d5e88e4915ff16cad533aa1344cf))
+* match production UID/GID in Dockerfile.dev ([3fffc8d](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/3fffc8d98525dfd408dce613fe93200c24b30cb1))
+* mount raw volume as rw so DELETE_SOURCE can clean up after transcode ([e55cb64](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/e55cb641cf95d7c5ee2582029ee6afa12116a793))
+* serialize dedup check with asyncio.Lock to prevent race condition ([d30a316](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/d30a316b30a3c70e9f18a12760c84b8c51da2824))
+* update tests for queue_job tuple return and overrides kwarg ([ef8d535](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/ef8d535281e44d1cad09ab561dd547b7cc5780ba))
+
 ## [10.5.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.4.0-alpha.1...v10.5.0-alpha.1) (2026-02-28)
 
 
