@@ -59,4 +59,5 @@ jobs:
           file: Dockerfile.${{ matrix.variant }}
           platforms: linux/amd64
           build-args: BASE_TAG=latest
+          build-contexts: uprightbass360/arm-transcoder-base:latest=docker-image://uprightbass360/arm-transcoder-base:latest
           tags: arm-transcoder:pr${{ github.event.number }}${{ matrix.suffix }}

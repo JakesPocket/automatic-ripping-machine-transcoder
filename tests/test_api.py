@@ -20,7 +20,7 @@ def mock_worker():
     worker.is_running = True
     worker.queue_size = 0
     worker.current_job = None
-    worker.queue_job = AsyncMock()
+    worker.queue_job = AsyncMock(return_value=(1, True))
     worker.shutdown = MagicMock()
     return worker
 

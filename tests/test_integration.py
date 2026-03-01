@@ -1309,7 +1309,7 @@ class TestMultiFileTranscode:
 
         transcode_calls = []
 
-        async def mock_transcode(source, output, job_id):
+        async def mock_transcode(source, output, job_id, overrides=None):
             transcode_calls.append(source.name)
 
         with patch("transcoder.get_db", test_get_db), \
