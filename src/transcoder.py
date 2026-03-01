@@ -113,6 +113,7 @@ class TranscodeWorker:
         self._gpu_support = gpu_support if gpu_support is not None else check_gpu_support()
         self._last_progress: dict[int, float] = {}
         self._last_progress_time: dict[int, float] = {}
+        self._queue_lock = asyncio.Lock()
 
         logger.info(f"GPU support: {self._gpu_support}")
 
@@ -214,51 +215,52 @@ class TranscodeWorker:
         pending/processing job already covers the same source_path.
         """
         overrides_json = json.dumps(config_overrides) if config_overrides else None
-        async with get_db() as db:
-            if existing_job_id:
-                # Retry existing job
-                result = await db.execute(
-                    select(TranscodeJobDB).where(TranscodeJobDB.id == existing_job_id)
-                )
-                job_db = result.scalar_one()
-            else:
-                # Deduplicate: skip if an active job already exists for this source
-                result = await db.execute(
-                    select(TranscodeJobDB).where(
-                        TranscodeJobDB.source_path == source_path,
-                        TranscodeJobDB.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]),
+        async with self._queue_lock:
+            async with get_db() as db:
+                if existing_job_id:
+                    # Retry existing job
+                    result = await db.execute(
+                        select(TranscodeJobDB).where(TranscodeJobDB.id == existing_job_id)
                     )
-                )
-                existing = result.scalar_one_or_none()
-                if existing:
-                    logger.info(
-                        f"Duplicate webhook — job {existing.id} already "
-                        f"{existing.status.value} for {source_path}"
+                    job_db = result.scalar_one()
+                else:
+                    # Deduplicate: skip if an active job already exists for this source
+                    result = await db.execute(
+                        select(TranscodeJobDB).where(
+                            TranscodeJobDB.source_path == source_path,
+                            TranscodeJobDB.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]),
+                        )
                     )
-                    return existing.id, False
+                    existing = result.scalar_one_or_none()
+                    if existing:
+                        logger.info(
+                            f"Duplicate webhook — job {existing.id} already "
+                            f"{existing.status.value} for {source_path}"
+                        )
+                        return existing.id, False
 
-                # Create new job record
-                job_db = TranscodeJobDB(
+                    # Create new job record
+                    job_db = TranscodeJobDB(
+                        title=title,
+                        source_path=source_path,
+                        arm_job_id=arm_job_id,
+                        video_type=video_type,
+                        year=year,
+                        disctype=disctype,
+                        poster_url=poster_url,
+                        config_overrides=overrides_json,
+                        status=JobStatus.PENDING,
+                    )
+                    db.add(job_db)
+                    await db.commit()
+                    await db.refresh(job_db)
+
+                job = TranscodeJob(
+                    id=job_db.id,
                     title=title,
                     source_path=source_path,
                     arm_job_id=arm_job_id,
-                    video_type=video_type,
-                    year=year,
-                    disctype=disctype,
-                    poster_url=poster_url,
-                    config_overrides=overrides_json,
-                    status=JobStatus.PENDING,
                 )
-                db.add(job_db)
-                await db.commit()
-                await db.refresh(job_db)
-
-            job = TranscodeJob(
-                id=job_db.id,
-                title=title,
-                source_path=source_path,
-                arm_job_id=arm_job_id,
-            )
 
         await self._queue.put(job)
         logger.info(f"Queued job {job.id}: {title}")
