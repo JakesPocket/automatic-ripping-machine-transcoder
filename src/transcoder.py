@@ -207,8 +207,12 @@ class TranscodeWorker:
         disctype: Optional[str] = None,
         poster_url: Optional[str] = None,
         config_overrides: dict | None = None,
-    ):
-        """Add a job to the transcode queue."""
+    ) -> tuple[int, bool]:
+        """Add a job to the transcode queue.
+
+        Returns (job_id, created) — created is False when an existing
+        pending/processing job already covers the same source_path.
+        """
         overrides_json = json.dumps(config_overrides) if config_overrides else None
         async with get_db() as db:
             if existing_job_id:
@@ -218,6 +222,21 @@ class TranscodeWorker:
                 )
                 job_db = result.scalar_one()
             else:
+                # Deduplicate: skip if an active job already exists for this source
+                result = await db.execute(
+                    select(TranscodeJobDB).where(
+                        TranscodeJobDB.source_path == source_path,
+                        TranscodeJobDB.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]),
+                    )
+                )
+                existing = result.scalar_one_or_none()
+                if existing:
+                    logger.info(
+                        f"Duplicate webhook — job {existing.id} already "
+                        f"{existing.status.value} for {source_path}"
+                    )
+                    return existing.id, False
+
                 # Create new job record
                 job_db = TranscodeJobDB(
                     title=title,
@@ -243,6 +262,7 @@ class TranscodeWorker:
 
         await self._queue.put(job)
         logger.info(f"Queued job {job.id}: {title}")
+        return job.id, True
 
     async def _update_job(self, job_id: int, **kwargs):
         """Update job fields using a short-lived DB session."""
@@ -1093,6 +1113,10 @@ class TranscodeWorker:
     def _cleanup_source(self, source_path: str):
         """Remove source files after successful transcode."""
         path = Path(source_path)
+
+        if not path.exists():
+            logger.warning(f"Source already removed: {source_path}")
+            return
 
         if path.is_file():
             path.unlink()

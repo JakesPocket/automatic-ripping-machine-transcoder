@@ -425,7 +425,7 @@ async def arm_webhook(
 
     # Queue the transcode job — use extracted media title for output naming
     job_title = media_title or payload.title
-    await worker.queue_job(
+    job_id, created = await worker.queue_job(
         source_path=full_path,
         title=job_title,
         arm_job_id=payload.job_id,
@@ -437,7 +437,8 @@ async def arm_webhook(
     )
 
     return {
-        "status": "queued",
+        "status": "queued" if created else "already_queued",
+        "job_id": job_id,
         "path": source_path,
         "queue_size": worker.queue_size,
     }
