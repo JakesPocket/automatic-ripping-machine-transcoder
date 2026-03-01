@@ -66,6 +66,11 @@ class Settings(BaseSettings):
         "",
         description="Optional secret for webhook authentication (X-Webhook-Secret header)"
     )
+    arm_callback_url: str = Field(
+        "",
+        description="ARM API base URL for status callbacks (e.g. http://arm-rippers:8080). "
+                    "When set, the transcoder notifies ARM when jobs complete or fail."
+    )
 
     # Transcoding — defaults are software (safe fallback for any hardware).
     # At startup, auto_resolve_gpu_defaults() upgrades these based on detected GPU.

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import structlog
 from sqlalchemy import select
 
@@ -548,6 +549,7 @@ class TranscodeWorker:
                     logger.warning(f"Could not clean up source: {e}")
 
             logger.info(f"Completed job {job.id}: {job.title}")
+            await self._notify_arm_callback(job, "completed")
 
         except Exception as e:
             logger.error(f"Job {job.id} failed: {e}", exc_info=True)
@@ -557,6 +559,7 @@ class TranscodeWorker:
                     status=JobStatus.FAILED,
                     error=str(e),
                 )
+                await self._notify_arm_callback(job, "failed", error=str(e))
             except Exception:
                 logger.error(f"Failed to update job {job.id} status to FAILED", exc_info=True)
 
@@ -639,7 +642,14 @@ class TranscodeWorker:
         """Wait for directory to stop receiving new files."""
         path = Path(path)
         if not path.exists():
-            raise ValueError(f"Source path does not exist: {path}")
+            # NFS mounts may lag behind — wait up to 60s for the path to appear
+            logger.info(f"Source path not yet visible, waiting for NFS propagation: {path}")
+            for _ in range(12):
+                await asyncio.sleep(5)
+                if path.exists():
+                    break
+            else:
+                raise ValueError(f"Source path does not exist: {path}")
 
         logger.info(f"Waiting for source to stabilize: {path}")
 
@@ -665,6 +675,21 @@ class TranscodeWorker:
                 raise TimeoutError(f"Source still changing after {timeout}s")
 
         logger.info(f"Source stabilized at {last_size} bytes")
+
+    async def _notify_arm_callback(self, job: TranscodeJob, status: str, error: str | None = None):
+        """Send transcode result back to ARM so it can update the job status."""
+        if not settings.arm_callback_url or not job.arm_job_id:
+            return
+        url = f"{settings.arm_callback_url.rstrip('/')}/api/v1/jobs/{job.arm_job_id}/transcode-callback"
+        payload: dict = {"status": status}
+        if error:
+            payload["error"] = error[:500]
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=payload)
+            logger.info(f"ARM callback sent ({resp.status_code}): {status} for ARM job {job.arm_job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to send ARM callback for job {job.arm_job_id}: {e}")
 
     def _discover_source_files(self, source_path: str) -> list[Path]:
         """Find all MKV files in source directory."""
@@ -723,6 +748,7 @@ class TranscodeWorker:
         )
 
         logger.info(f"Completed audio passthrough for job {job.id}: {job.title}")
+        await self._notify_arm_callback(job, "completed")
 
         # Clean up source directory if delete_source is set (non-fatal)
         if settings.delete_source:
