@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.8.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.7.0-alpha.1...v10.8.0-alpha.1) (2026-03-01)
+
+
+### Features
+
+* add ARM callback and NFS wait for source path ([84a27d7](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/84a27d724bf9bebc8345693070f044e97230722f))
+
 ## [10.7.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.6.0-alpha.1...v10.7.0-alpha.1) (2026-03-01)
 
 
