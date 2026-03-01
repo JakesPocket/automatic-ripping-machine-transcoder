@@ -3,8 +3,7 @@ services:
     image: uprightbass360/arm-transcoder:${TRANSCODER_VERSION:-latest}-intel
     build:
       context: .
-      args:
-        GPU_VARIANT: intel
+      dockerfile: Dockerfile.intel
     container_name: arm-transcoder-intel
     restart: unless-stopped
     ports:

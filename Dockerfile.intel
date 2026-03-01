@@ -1,0 +1,7 @@
+ARG BASE_TAG=latest
+FROM uprightbass360/arm-transcoder-base:${BASE_TAG}
+
+# Intel Quick Sync Video (QSV) via VA-API
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    intel-media-va-driver libvpl2 \
+    && rm -rf /var/lib/apt/lists/*

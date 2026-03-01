@@ -1,5 +1,3 @@
-ARG GPU_VARIANT=nvidia
-
 # ── Stage 1: Compile HandBrake CLI with all GPU encoders ──────────────
 # Use CUDA devel image so HandBrake's bundled FFmpeg can compile with
 # NVENC/NVDEC support (requires cuda_llvm / nvcc headers).
@@ -31,25 +29,14 @@ RUN git clone https://github.com/HandBrake/HandBrake.git \
                    --launch \
     && make -j$(nproc) --directory=build install
 
-# ── GPU-specific runtime bases ────────────────────────────────────────
-FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04 AS runtime-nvidia
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
-
-FROM ubuntu:24.04 AS runtime-intel
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    intel-media-va-driver libvpl2 \
-    && rm -rf /var/lib/apt/lists/*
-
-FROM ubuntu:24.04 AS runtime-amd
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    mesa-va-drivers \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── Final: assemble runtime image ────────────────────────────────────
-FROM runtime-${GPU_VARIANT} AS final
+# ── Stage 2: Base runtime ──────────────────────────────────────────────
+# Shared base with HandBrake + deps + app code.
+# Add a GPU layer (Dockerfile.nvidia/intel/amd) for hardware encoding,
+# or use this image directly for CPU-only (x265/x264) transcoding.
+FROM ubuntu:24.04
 LABEL org.opencontainers.image.source="https://github.com/uprightbass360/automatic-ripping-machine-transcoder"
 LABEL org.opencontainers.image.license="MIT"
+LABEL org.opencontainers.image.description="ARM Transcoder base — add a GPU layer (Dockerfile.nvidia/intel/amd) for hardware encoding"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip ffmpeg mediainfo curl vainfo gosu \
@@ -65,8 +52,8 @@ COPY --from=handbrake-builder /usr/local/bin/HandBrakeCLI /usr/local/bin/
 # App user — UID 1001 / GID 1000 to match ARM's runtime identity.
 # ARM writes NFS files as 1001:1000 (ARM_UID=1001, ARM_GID=1000),
 # so the transcoder must use the same UID to read/write shared storage.
-# The CUDA base image ships a default 'ubuntu' user at 1000:1000 which
-# we remove first so our UID/GID assignments are clean.
+# ubuntu:24.04 ships a default 'ubuntu' user at 1000:1000 which we
+# remove first so our UID/GID assignments are clean.
 ARG TRANSCODER_UID=1001
 ARG TRANSCODER_GID=1000
 RUN (userdel -r ubuntu 2>/dev/null; groupdel ubuntu 2>/dev/null; true) \

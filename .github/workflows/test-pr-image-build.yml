@@ -8,11 +8,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-pr-build:
+  test-base-build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build base image
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          tags: arm-transcoder-base:pr${{ github.event.number }}
+          outputs: type=docker
 
+  test-variant-builds:
+    needs: test-base-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         include:
@@ -22,19 +39,24 @@ jobs:
             suffix: "-amd"
           - variant: intel
             suffix: "-intel"
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image (${{ matrix.variant }})
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build base (for FROM reference)
         uses: docker/build-push-action@v6
         with:
           push: false
           context: .
-          build-args: GPU_VARIANT=${{ matrix.variant }}
+          file: Dockerfile
           platforms: linux/amd64
+          tags: uprightbass360/arm-transcoder-base:latest
+          load: true
+      - name: Build GPU variant (${{ matrix.variant }})
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          context: .
+          file: Dockerfile.${{ matrix.variant }}
+          platforms: linux/amd64
+          build-args: BASE_TAG=latest
           tags: arm-transcoder:pr${{ github.event.number }}${{ matrix.suffix }}

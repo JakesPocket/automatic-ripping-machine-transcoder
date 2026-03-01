@@ -3,8 +3,7 @@ services:
     image: uprightbass360/arm-transcoder:${TRANSCODER_VERSION:-latest}-amd
     build:
       context: .
-      args:
-        GPU_VARIANT: amd
+      dockerfile: Dockerfile.amd
     container_name: arm-transcoder-amd
     restart: unless-stopped
     ports:
