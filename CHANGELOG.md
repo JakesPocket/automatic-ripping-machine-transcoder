@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.7.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.6.0-alpha.1...v10.7.0-alpha.1) (2026-03-01)
+
+
+### Features
+
+* extract HandBrake build into separately-published image ([f384d9f](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/f384d9f25845cbd035a5107796cc565b06c2c803))
+
 ## [10.6.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.5.0-alpha.1...v10.6.0-alpha.1) (2026-03-01)
 
 
