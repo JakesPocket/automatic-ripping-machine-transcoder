@@ -9,7 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -s /bin/bash transcoder
+# Match production UID/GID (Dockerfile uses 1001:1000) so dev and prod
+# containers can share the same DB volume without permission errors.
+ARG TRANSCODER_UID=1001
+ARG TRANSCODER_GID=1000
+RUN groupadd -g ${TRANSCODER_GID} transcoder \
+    && useradd -m -s /bin/bash -u ${TRANSCODER_UID} -g transcoder transcoder
 
 WORKDIR /app
 COPY requirements.txt .
