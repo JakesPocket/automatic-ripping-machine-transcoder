@@ -47,7 +47,7 @@ services:
       - LOG_PATH=/data/logs
     volumes:
       # Shared storage — set in .env to match your NFS/SMB mount points
-      - ${HOST_RAW_PATH:-./raw}:/data/raw:ro
+      - ${HOST_RAW_PATH:-./raw}:/data/raw:rw
       - ${HOST_COMPLETED_PATH:-./completed}:/data/completed:rw
       # Local paths
       - ${WORK_PATH:-./work}:/data/work:rw
