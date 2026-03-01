@@ -3,6 +3,7 @@ ARM Transcoder - Webhook receiver and transcode orchestrator
 """
 
 import asyncio
+import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -432,6 +433,7 @@ async def arm_webhook(
         year=payload.year,
         disctype=payload.disctype,
         poster_url=payload.poster_url,
+        config_overrides=payload.config_overrides,
     )
 
     return {
@@ -496,6 +498,7 @@ async def list_jobs(
                     "output_path": job.output_path,
                     "total_tracks": job.total_tracks,
                     "poster_url": job.poster_url,
+                    "config_overrides": json.loads(job.config_overrides) if job.config_overrides else None,
                 }
                 for job in jobs
             ],

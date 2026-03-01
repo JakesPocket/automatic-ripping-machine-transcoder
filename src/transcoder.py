@@ -3,6 +3,7 @@ Transcode worker - handles GPU transcoding with HandBrake or FFmpeg
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -122,6 +123,12 @@ class TranscodeWorker:
 
         logger.info(f"Encoder family: {self._encoder_family}, backend: {self._encoder_backend}")
 
+    def _effective(self, key: str, overrides: dict | None) -> object:
+        """Return per-job override if set, otherwise global setting."""
+        if overrides and key in overrides:
+            return overrides[key]
+        return getattr(settings, key)
+
     def _detect_encoder_family(self, encoder: str) -> str:
         """Determine encoder family from encoder name."""
         if "vaapi" in encoder:
@@ -199,8 +206,10 @@ class TranscodeWorker:
         year: Optional[str] = None,
         disctype: Optional[str] = None,
         poster_url: Optional[str] = None,
+        config_overrides: dict | None = None,
     ):
         """Add a job to the transcode queue."""
+        overrides_json = json.dumps(config_overrides) if config_overrides else None
         async with get_db() as db:
             if existing_job_id:
                 # Retry existing job
@@ -218,6 +227,7 @@ class TranscodeWorker:
                     year=year,
                     disctype=disctype,
                     poster_url=poster_url,
+                    config_overrides=overrides_json,
                     status=JobStatus.PENDING,
                 )
                 db.add(job_db)
@@ -372,6 +382,26 @@ class TranscodeWorker:
                 logfile=logfile_name,
             )
 
+            # Load per-job overrides and DB metadata
+            overrides = None
+            db_video_type = None
+            db_year = None
+            async with get_db() as db_sess:
+                result = await db_sess.execute(
+                    select(TranscodeJobDB).where(TranscodeJobDB.id == job.id)
+                )
+                job_db = result.scalar_one_or_none()
+                if job_db:
+                    db_video_type = job_db.video_type
+                    db_year = job_db.year
+                    if job_db.config_overrides:
+                        try:
+                            overrides = json.loads(job_db.config_overrides)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+            if overrides:
+                logger.info(f"Per-job overrides: {overrides}")
+
             # Resolve actual source path (ARM may move files to subdirectories)
             resolved_path = self._resolve_source_path(job.source_path)
             if resolved_path != job.source_path:
@@ -439,17 +469,20 @@ class TranscodeWorker:
             await self._update_job(job.id, main_feature_file=main_feature.name)
 
             # Determine final output path (with metadata from resolution)
-            video_type = self._detect_video_type(job.title, job.source_path)
-            output_dir = self._determine_output_path(job.title, job.source_path, resolution)
+            output_dir = self._determine_output_path(
+                job.title, job.source_path, resolution, overrides,
+                db_year=db_year, db_video_type=db_video_type,
+            )
             folder_name = output_dir.name
             os.makedirs(output_dir, exist_ok=True)
             await self._update_job(
                 job.id,
-                video_type=video_type,
+                video_type=db_video_type or self._detect_video_type(job.title, job.source_path),
                 output_path=str(output_dir),
             )
 
             # Transcode each file locally
+            ext = self._effective("output_extension", overrides)
             for i, source_file in enumerate(local_source_files):
                 progress = (i / len(local_source_files)) * 100
                 await self._update_progress(job.id, progress)
@@ -457,9 +490,9 @@ class TranscodeWorker:
                 # Name output files using the metadata-enriched folder name
                 is_main = source_file == main_feature
                 if is_main or len(local_source_files) == 1:
-                    output_file = work_output_dir / f"{folder_name}.{settings.output_extension}"
+                    output_file = work_output_dir / f"{folder_name}.{ext}"
                 else:
-                    output_file = work_output_dir / f"{folder_name} - {source_file.stem}.{settings.output_extension}"
+                    output_file = work_output_dir / f"{folder_name} - {source_file.stem}.{ext}"
 
                 logger.info(
                     f"Transcoding [{i+1}/{len(local_source_files)}]: {source_file.name}"
@@ -467,9 +500,9 @@ class TranscodeWorker:
                 )
 
                 if self._encoder_backend == "ffmpeg":
-                    await self._transcode_file_ffmpeg(source_file, output_file, job.id)
+                    await self._transcode_file_ffmpeg(source_file, output_file, job.id, overrides=overrides)
                 else:
-                    await self._transcode_file_handbrake(source_file, output_file, job.id)
+                    await self._transcode_file_handbrake(source_file, output_file, job.id, overrides=overrides)
 
             # Move local output → completed
             logger.info(f"Moving output to completed: {output_dir}")
@@ -485,7 +518,7 @@ class TranscodeWorker:
             )
 
             # Clean up raw source if configured
-            if settings.delete_source:
+            if self._effective("delete_source", overrides):
                 try:
                     self._cleanup_source(job.source_path)
                     logger.info(f"Cleaned up source: {job.source_path}")
@@ -712,9 +745,9 @@ class TranscodeWorker:
             return "2160p"
         return f"{height}p"
 
-    def _get_codec_name(self) -> str:
+    def _get_codec_name(self, overrides: dict | None = None) -> str:
         """Map settings.video_encoder to a display name."""
-        encoder = settings.video_encoder.lower()
+        encoder = str(self._effective("video_encoder", overrides)).lower()
         h265_names = {
             "nvenc_h265", "hevc_nvenc", "vaapi_h265", "hevc_vaapi",
             "amf_h265", "hevc_amf", "qsv_h265", "hevc_qsv", "x265",
@@ -729,31 +762,41 @@ class TranscodeWorker:
             return "H264"
         return encoder.upper()
 
-    def _determine_output_path(self, title: str, source_path: str, resolution: tuple[int, int] | None = None) -> Path:
+    def _determine_output_path(
+        self, title: str, source_path: str,
+        resolution: tuple[int, int] | None = None,
+        overrides: dict | None = None,
+        *, db_year: str | None = None, db_video_type: str | None = None,
+    ) -> Path:
         """Determine the output directory path.
 
         Builds a metadata-enriched folder name like:
           Serial Mom (1994) 480p DVD HEVC
+
+        Prefers DB values (db_year, db_video_type) from the webhook payload
+        over re-detecting from the directory name / title patterns.
         """
-        video_type = self._detect_video_type(title, source_path)
-        if video_type == "tv":
+        video_type = db_video_type or self._detect_video_type(title, source_path)
+        if video_type in ("tv", "series"):
             base = Path(settings.completed_path) / settings.tv_subdir
         else:
             base = Path(settings.completed_path) / settings.movies_subdir
 
         clean_title = clean_title_for_filesystem(title)
 
-        # Extract year from source directory name, e.g. "Serial-Mom (1994)"
-        dir_name = Path(source_path).name
-        year_match = re.search(r'\((\d{4})\)', dir_name)
-        year = year_match.group(1) if year_match else None
+        # Prefer year from DB; fall back to extracting from directory name
+        year = db_year if db_year and db_year not in ("", "0000") else None
+        if not year:
+            dir_name = Path(source_path).name
+            year_match = re.search(r'\((\d{4})\)', dir_name)
+            year = year_match.group(1) if year_match else None
 
         # Build metadata suffix if resolution is available
         if resolution:
             height = resolution[1]
             res_str = self._format_resolution(height)
             media_type = self._classify_media_type(height)
-            codec = self._get_codec_name()
+            codec = self._get_codec_name(overrides)
             if year:
                 folder_name = f"{clean_title} ({year}) {res_str} {media_type} {codec}"
             else:
@@ -772,20 +815,21 @@ class TranscodeWorker:
         source: Path,
         output: Path,
         job_id: int,
+        overrides: dict | None = None,
     ):
         """Transcode a single file using HandBrake."""
         # Resolution-based preset selection
         resolution = await self._get_video_resolution(source)
         extra_args = []
         if resolution and resolution[1] > 1080:
-            preset = settings.handbrake_preset_4k
+            preset = self._effective("handbrake_preset_4k", overrides)
             logger.info(f"4K source ({resolution[0]}x{resolution[1]}), using preset: {preset}")
         elif resolution and resolution[1] < 720:
-            preset = settings.handbrake_preset_dvd or settings.handbrake_preset
+            preset = self._effective("handbrake_preset_dvd", overrides) or self._effective("handbrake_preset", overrides)
             extra_args = ["--width", "1280"]
             logger.info(f"Low-res source ({resolution[0]}x{resolution[1]}), using preset: {preset}, upscaling to 720p")
         else:
-            preset = settings.handbrake_preset
+            preset = self._effective("handbrake_preset", overrides)
 
         cmd = [
             "HandBrakeCLI",
@@ -794,35 +838,39 @@ class TranscodeWorker:
         ]
 
         # Add encoder
-        if settings.video_encoder:
-            cmd.extend(["--encoder", settings.video_encoder])
+        video_encoder = self._effective("video_encoder", overrides)
+        if video_encoder:
+            cmd.extend(["--encoder", str(video_encoder)])
 
         # Add quality
-        cmd.extend(["-q", str(settings.video_quality)])
+        cmd.extend(["-q", str(self._effective("video_quality", overrides))])
 
         # Add preset if specified
-        if settings.handbrake_preset_file:
-            cmd.extend(["--preset-import-file", settings.handbrake_preset_file])
+        preset_file = self._effective("handbrake_preset_file", overrides)
+        if preset_file:
+            cmd.extend(["--preset-import-file", str(preset_file)])
         if preset:
-            cmd.extend(["--preset", preset])
+            cmd.extend(["--preset", str(preset)])
 
         # Add resolution-based extra args (e.g. upscale for DVD)
         cmd.extend(extra_args)
 
         # Audio handling
-        if settings.audio_encoder == "copy":
+        audio_encoder = self._effective("audio_encoder", overrides)
+        if audio_encoder == "copy":
             cmd.extend(["--aencoder", "copy"])
             # Override preset's CopyMask so all common codecs pass through
             cmd.extend(["--audio-copy-mask",
                          "aac,ac3,eac3,dts,dtshd,truehd,flac,mp2,mp3"])
             cmd.extend(["--audio-fallback", "aac"])
         else:
-            cmd.extend(["--aencoder", settings.audio_encoder])
+            cmd.extend(["--aencoder", str(audio_encoder)])
 
         # Subtitle handling
-        if settings.subtitle_mode == "all":
+        subtitle_mode = self._effective("subtitle_mode", overrides)
+        if subtitle_mode == "all":
             cmd.extend(["--all-subtitles"])
-        elif settings.subtitle_mode == "first":
+        elif subtitle_mode == "first":
             cmd.extend(["--subtitle", "1"])
 
         logger.debug(f"HandBrake command: {' '.join(cmd)}")
@@ -858,11 +906,12 @@ class TranscodeWorker:
     def _build_ffmpeg_command(  # noqa: C901
         self, source: Path, output: Path,
         resolution: Optional[tuple[int, int]] = None,
+        overrides: dict | None = None,
     ) -> list[str]:
         """Build FFmpeg command based on encoder family."""
-        encoder_name = settings.video_encoder
-        family = self._encoder_family
-        quality = settings.video_quality
+        encoder_name = str(self._effective("video_encoder", overrides))
+        family = self._detect_encoder_family(encoder_name) if overrides and "video_encoder" in overrides else self._encoder_family
+        quality = self._effective("video_quality", overrides)
 
         # Determine FFmpeg encoder name
         if family == "nvenc":
@@ -912,11 +961,12 @@ class TranscodeWorker:
         cmd.extend(["-i", str(source)])
 
         # Explicit stream mapping to preserve multi-track audio/subtitles
+        subtitle_mode = self._effective("subtitle_mode", overrides)
         cmd.extend(["-map", "0:v:0"])   # first video stream
         cmd.extend(["-map", "0:a?"])    # all audio streams (optional)
-        if settings.subtitle_mode == "all":
+        if subtitle_mode == "all":
             cmd.extend(["-map", "0:s?"])    # all subtitles (optional)
-        elif settings.subtitle_mode == "first":
+        elif subtitle_mode == "first":
             cmd.extend(["-map", "0:s:0?"])  # first subtitle only (optional)
 
         # Video encoder
@@ -947,13 +997,14 @@ class TranscodeWorker:
             logger.info(f"Low-res source ({resolution[0]}x{resolution[1]}), upscaling to 720p")
 
         # Audio handling
-        if settings.audio_encoder == "copy":
+        audio_encoder = self._effective("audio_encoder", overrides)
+        if audio_encoder == "copy":
             cmd.extend(["-c:a", "copy"])
         else:
-            cmd.extend(["-c:a", settings.audio_encoder])
+            cmd.extend(["-c:a", str(audio_encoder)])
 
         # Subtitle handling (stream selection handled by -map above)
-        if settings.subtitle_mode in ("all", "first"):
+        if subtitle_mode in ("all", "first"):
             cmd.extend(["-c:s", "copy"])
 
         # Output
@@ -966,10 +1017,11 @@ class TranscodeWorker:
         source: Path,
         output: Path,
         job_id: int,
+        overrides: dict | None = None,
     ):
         """Transcode a single file using FFmpeg."""
         resolution = await self._get_video_resolution(source)
-        cmd = self._build_ffmpeg_command(source, output, resolution)
+        cmd = self._build_ffmpeg_command(source, output, resolution, overrides)
 
         logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 

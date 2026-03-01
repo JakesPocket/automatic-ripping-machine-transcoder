@@ -63,6 +63,7 @@ class TranscodeJobDB(Base):
     main_feature_file = Column(String(500), nullable=True)
     logfile = Column(String(255), nullable=True)
     poster_url = Column(String(500), nullable=True)
+    config_overrides = Column(Text, nullable=True)  # JSON dict of per-job transcode overrides
 
 
 class WebhookPayload(BaseModel):
@@ -79,6 +80,7 @@ class WebhookPayload(BaseModel):
     year: Optional[str] = Field(None, max_length=10)
     disctype: Optional[str] = Field(None, max_length=50)
     poster_url: Optional[str] = Field(None, max_length=500)
+    config_overrides: Optional[dict] = Field(None)
 
     @property
     def effective_body(self) -> Optional[str]:
