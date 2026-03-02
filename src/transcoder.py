@@ -405,6 +405,9 @@ class TranscodeWorker:
                 logfile=logfile_name,
             )
 
+            # Notify ARM that transcoding has started
+            await self._notify_arm_callback(job, "transcoding")
+
             # Load per-job overrides and DB metadata
             overrides = None
             db_video_type = None
