@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.8.3-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.2-alpha.1...v10.8.3-alpha.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* address SonarCloud reliability bugs ([2bc0104](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/2bc010418959a822cbb6514b5b98b651fe15c1cf))
+
 ## [10.8.2-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.1-alpha.1...v10.8.2-alpha.1) (2026-03-02)
 
 
