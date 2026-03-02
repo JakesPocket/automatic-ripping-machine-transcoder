@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.8.1-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.0-alpha.1...v10.8.1-alpha.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* notify ARM when transcoding starts so job status updates to transcoding ([8fc72c5](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/8fc72c567e1ae1a73df3603416cd5969536a30a6))
+
 ## [10.8.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.7.0-alpha.1...v10.8.0-alpha.1) (2026-03-01)
 
 
