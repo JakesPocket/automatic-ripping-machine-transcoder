@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.8.2-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.1-alpha.1...v10.8.2-alpha.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* scope workflow permissions to job level (S8264/S8233) ([e58c08d](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/e58c08dd7da2d11456a6540d9306b333a6b10763))
+
 ## [10.8.1-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.0-alpha.1...v10.8.1-alpha.1) (2026-03-02)
 
 
