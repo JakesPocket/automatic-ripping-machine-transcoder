@@ -14,10 +14,6 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  packages: write
-
 env:
   DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/arm-handbrake
   GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/arm-handbrake
@@ -25,6 +21,9 @@ env:
 jobs:
   build-handbrake:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v6
 
