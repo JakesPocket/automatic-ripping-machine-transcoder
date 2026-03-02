@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Worker did not finish within {SHUTDOWN_TIMEOUT}s, cancelling")
             worker_task.cancel()
         except asyncio.CancelledError:
-            pass
+            raise
     else:
         worker_task.cancel()
 

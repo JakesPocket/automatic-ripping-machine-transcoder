@@ -208,7 +208,7 @@ class TestProcessJobLifecycle:
             result = await session.execute(select(TranscodeJobDB))
             job_db = result.scalar_one()
             assert job_db.status == JobStatus.COMPLETED
-            assert job_db.progress == 100.0
+            assert abs(job_db.progress - 100.0) < 0.01
             assert job_db.completed_at is not None
             assert job_db.started_at is not None
             assert job_db.error is None
@@ -616,8 +616,9 @@ class TestWorkerRunLoop:
                     await asyncio.sleep(0.1)
                     worker.shutdown()
 
-                asyncio.create_task(run_and_stop())
+                stop_task = asyncio.create_task(run_and_stop())
                 await worker.run()
+                await stop_task
 
         assert worker.is_running is False
         assert worker.queue_size == 0
@@ -1071,7 +1072,7 @@ class TestAudioPassthrough:
             job_db = result.scalar_one()
             assert job_db.status == JobStatus.COMPLETED
             assert job_db.total_tracks == 3
-            assert job_db.progress == 100.0
+            assert abs(job_db.progress - 100.0) < 0.01
             assert job_db.completed_at is not None
             assert "audio" in job_db.output_path
 
