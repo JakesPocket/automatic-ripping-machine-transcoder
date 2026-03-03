@@ -33,14 +33,14 @@ if pct status ${VMID} &>/dev/null; then
 fi
 
 # Check template exists
-if [ ! -f "/var/lib/vz/template/cache/ubuntu-22.04-standard_22.04-1_amd64.tar.zst" ]; then
+if [[ ! -f "/var/lib/vz/template/cache/ubuntu-22.04-standard_22.04-1_amd64.tar.zst" ]]; then
     echo "Downloading Ubuntu 22.04 template..."
     pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst
 fi
 
 # Create container
 echo "Creating container..."
-if [ "$IP_ADDRESS" = "dhcp" ]; then
+if [[ "$IP_ADDRESS" = "dhcp" ]]; then
     NET_CONFIG="name=eth0,bridge=vmbr0,ip=dhcp"
 else
     NET_CONFIG="name=eth0,bridge=vmbr0,gw=192.168.1.1,ip=${IP_ADDRESS}/24"

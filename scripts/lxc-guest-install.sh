@@ -14,7 +14,7 @@ set -e
 echo "=== ARM Transcoder LXC Installation ==="
 
 # Check if running as root
-if [ "$EUID" -ne 0 ]; then
+if [[ "$EUID" -ne 0 ]]; then
     echo "Please run as root"
     exit 1
 fi
@@ -77,7 +77,7 @@ cp -r "${SCRIPT_DIR}/src/"* /opt/arm-transcoder/
 cp -r "${SCRIPT_DIR}/presets" /opt/arm-transcoder/
 
 # Create config file
-if [ ! -f /etc/arm-transcoder.env ]; then
+if [[ ! -f /etc/arm-transcoder.env ]]; then
     cp "${SCRIPT_DIR}/.env.example" /etc/arm-transcoder.env
     echo "Created /etc/arm-transcoder.env - please edit this file"
 fi

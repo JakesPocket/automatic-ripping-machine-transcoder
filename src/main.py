@@ -253,7 +253,7 @@ async def get_config(_role: str = Depends(get_current_user)):
     }
 
 
-@app.patch("/config")
+@app.patch("/config", responses={400: {"description": "Invalid or non-updatable keys"}, 422: {"description": "Validation error"}})
 async def update_config(
     request: Request,
     _role: str = Depends(require_admin),
@@ -300,7 +300,41 @@ async def update_config(
     }
 
 
-@app.post("/webhook/arm")
+def _normalize_source_path(source_path: str | None) -> str | None:
+    """Normalize absolute paths from ARM host to relative paths.
+
+    The webhook sender may include the full ARM host path
+    (e.g. /home/arm/media/raw/Title). Strip any leading directory prefix
+    and keep only the component(s) relative to the raw root.
+    """
+    if not source_path or not os.path.isabs(source_path):
+        return source_path
+    parts = Path(source_path).parts  # ('/', 'home', 'arm', 'media', 'raw', 'Title')
+    try:
+        raw_idx = len(parts) - 1 - parts[::-1].index("raw")
+        return str(Path(*parts[raw_idx + 1:])) if raw_idx + 1 < len(parts) else None
+    except ValueError:
+        return Path(source_path).name
+
+
+def _extract_media_title(body: str | None) -> str | None:
+    """Extract media title from ARM notification body text."""
+    if not body:
+        return None
+    for pattern in [
+        r"^(.+?)\s+rip complete",           # ARM rip notification
+        r"^(.+?)\s+processing complete",     # ARM transcode notification
+        r"Rip of (.+?) complete",            # legacy format
+    ]:
+        match = re.search(pattern, body, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    # No notification pattern matched — use body directly, stripping trailing year
+    cleaned = re.sub(r"\s*\(\d{4}\)\s*$", "", body).strip()
+    return cleaned or None
+
+
+@app.post("/webhook/arm", responses={400: {"description": "Invalid payload"}, 413: {"description": "Payload too large"}, 503: {"description": "Transcoder not ready"}})
 async def arm_webhook(
     request: Request,
     _verified: bool = Depends(verify_webhook_secret),
@@ -332,13 +366,11 @@ async def arm_webhook(
 
     try:
         payload_dict = await request.json()
-        # Validate with Pydantic model
         payload = WebhookPayload(**payload_dict)
     except Exception as e:
         logger.warning(f"Invalid webhook payload: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid payload: {e}")
 
-    # Use effective_body which handles both 'body' (curl) and 'message' (Apprise) fields
     body = payload.effective_body
     logger.info(f"Received webhook: {payload.title} (body={'present' if body else 'empty'})")
 
@@ -348,82 +380,34 @@ async def arm_webhook(
         (body and "complete" in body.lower()) or
         payload.status == "success"
     )
-
     if not is_complete:
         logger.debug(f"Ignoring non-completion webhook: {payload.title}")
         return {"status": "ignored", "reason": "not a completion event"}
 
-    # Determine source path
-    source_path = payload.path
-
-    # Normalize absolute paths from ARM host.
-    # The webhook sender (ARM's bash_notify or the UI's re-transcode) may
-    # include the full ARM host path (e.g. /home/arm/media/raw/Title).
-    # Inside this container the raw mount is at settings.raw_path (/data/raw),
-    # so we strip any leading directory prefix and keep only the final
-    # component(s) relative to the raw root.
-    if source_path and os.path.isabs(source_path):
-        # e.g. "/home/arm/media/raw/Title" → "Title"
-        # e.g. "/home/arm/media/raw/movies/Title" → "movies/Title"
-        # We can't know what the ARM-side raw path is, so take everything
-        # after the last path component that matches "raw".
-        parts = Path(source_path).parts  # ('/', 'home', 'arm', 'media', 'raw', 'Title')
-        try:
-            raw_idx = len(parts) - 1 - parts[::-1].index("raw")
-            source_path = str(Path(*parts[raw_idx + 1:])) if raw_idx + 1 < len(parts) else None
-        except ValueError:
-            # No "raw" component — just use the final directory name
-            source_path = Path(source_path).name
+    source_path = _normalize_source_path(payload.path)
+    if source_path:
         logger.debug(f"Normalized absolute path to: {source_path}")
 
-    # Extract media title from body or title field.
-    # ARM notification formats (body):
-    #   "{title} rip complete. Starting transcode."  (NOTIFY_RIP)
-    #   "{title} processing complete."               (NOTIFY_TRANSCODE)
-    #   "Rip of {title} complete"                    (legacy/custom)
-    # UI sends plain title in both title and body fields.
-    media_title = None
-    if body:
-        for pattern in [
-            r"^(.+?)\s+rip complete",           # ARM rip notification
-            r"^(.+?)\s+processing complete",     # ARM transcode notification
-            r"Rip of (.+?) complete",            # legacy format
-        ]:
-            match = re.search(pattern, body, re.IGNORECASE)
-            if match:
-                media_title = match.group(1).strip()
-                break
-
-    # If body didn't match a notification pattern, use it as the title directly.
-    # Strip trailing " (year)" if present — e.g. "The-Babysitter (1995)" → "The-Babysitter"
-    if not media_title and body:
-        cleaned = re.sub(r"\s*\(\d{4}\)\s*$", "", body).strip()
-        if cleaned:
-            media_title = cleaned
+    media_title = _extract_media_title(body)
 
     # Use extracted title as source path if no explicit path provided
     if not source_path and media_title:
-        safe_title = Path(media_title).name
-        source_path = safe_title
+        source_path = Path(media_title).name
 
     if not source_path:
         logger.warning(f"Could not determine path from webhook: {payload.title}")
         return {"status": "error", "reason": "could not determine source path"}
 
     # Security: reject traversal attempts but allow relative subdirectories
-    # (e.g. "movies/Title (Year)" is valid, ".." and "\" are not)
     if "\\" in source_path or ".." in source_path:
         logger.warning(f"Rejected path with traversal attempt: {source_path}")
         return {"status": "error", "reason": "invalid path"}
 
-    # Construct full path within RAW_PATH
     full_path = str(Path(settings.raw_path) / source_path)
 
-    # Guard against worker not being ready
     if worker is None or not worker.is_running:
         raise HTTPException(status_code=503, detail="Transcoder not ready")
 
-    # Queue the transcode job — use extracted media title for output naming
     job_title = media_title or payload.title
     job_id, created = await worker.queue_job(
         source_path=full_path,
@@ -509,7 +493,7 @@ async def list_jobs(
         }
 
 
-@app.post("/jobs/{job_id}/retry")
+@app.post("/jobs/{job_id}/retry", responses={400: {"description": "Job not in failed state or retry limit reached"}, 404: {"description": "Job not found"}, 503: {"description": "Transcoder not ready"}})
 async def retry_job(
     job_id: int,
     _role: str = Depends(require_admin),
@@ -555,7 +539,7 @@ async def retry_job(
         return {"status": "queued", "job_id": job.id, "retry_count": job.retry_count}
 
 
-@app.delete("/jobs/{job_id}")
+@app.delete("/jobs/{job_id}", responses={400: {"description": "Cannot delete job in progress"}, 404: {"description": "Job not found"}})
 async def delete_job(
     job_id: int,
     _role: str = Depends(require_admin),
@@ -608,7 +592,7 @@ async def list_logs(_role: str = Depends(get_current_user)):
     return _list_logs()
 
 
-@app.get("/logs/{filename}/structured")
+@app.get("/logs/{filename}/structured", responses={404: {"description": "Log file not found"}})
 async def get_structured_log(
     filename: str,
     mode: str = Query("tail", pattern="^(tail|full)$"),
@@ -625,7 +609,7 @@ async def get_structured_log(
     return result
 
 
-@app.get("/logs/{filename}")
+@app.get("/logs/{filename}", responses={404: {"description": "Log file not found"}})
 async def get_log(
     filename: str,
     mode: str = Query("tail", pattern="^(tail|full)$"),
