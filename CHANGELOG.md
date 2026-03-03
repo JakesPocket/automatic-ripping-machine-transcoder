@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.8.4-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.3-alpha.1...v10.8.4-alpha.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* resolve SonarCloud HIGH issues (S7688, S8415, S1192, S3776) ([6c04900](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/6c04900b464eebb3cc89fac48e44805c3c7fc730))
+
 ## [10.8.3-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.2-alpha.1...v10.8.3-alpha.1) (2026-03-02)
 
 
