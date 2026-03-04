@@ -36,7 +36,7 @@ HELPER_SCRIPT="/usr/local/bin/arm-drive-restart.sh"
 UDEV_RULE="/etc/udev/rules.d/99-arm-drive-watcher.rules"
 UDEV_SERVICE="/etc/systemd/system/arm-drive-watcher@.service"
 DEVICE_SERVICE="/etc/systemd/system/arm-drive-watcher.service"
-STATE_FILE="/var/run/arm-drive-watcher.state"
+STATE_FILE_PREFIX="/var/run/arm-drive-watcher"
 
 # --- Defaults ---
 MODE=""
@@ -119,7 +119,15 @@ if [[ "$UNINSTALL" == true ]]; then
     echo ""
 
     removed=0
-    for f in "$HELPER_SCRIPT" "$UDEV_RULE" "$UDEV_SERVICE" "$DEVICE_SERVICE" "$STATE_FILE"; do
+    for f in "$HELPER_SCRIPT" "$UDEV_RULE" "$UDEV_SERVICE" "$DEVICE_SERVICE"; do
+        if [[ -f "$f" ]]; then
+            rm -f "$f"
+            echo "  Removed: $f"
+            removed=$((removed + 1))
+        fi
+    done
+    # Remove per-device state files
+    for f in "${STATE_FILE_PREFIX}"-*.state; do
         if [[ -f "$f" ]]; then
             rm -f "$f"
             echo "  Removed: $f"
@@ -258,18 +266,20 @@ fi
 exit 0'
 fi
 
-# Build debounce logic (udev mode only)
+# Build debounce logic (udev mode only, per-device state file)
 DEBOUNCE_BLOCK=""
 if [[ "$MODE" == "udev" ]]; then
     DEBOUNCE_BLOCK="
-# --- Debounce ---
-STATE_FILE=\"$STATE_FILE\"
+# --- Per-device debounce ---
+# Device name passed as \$1 by systemd %i substitution
+DEBOUNCE_DEVICE=\"\${1:-unknown}\"
+STATE_FILE=\"${STATE_FILE_PREFIX}-\${DEBOUNCE_DEVICE}.state\"
 NOW=\$(date +%s)
 if [[ -f \"\$STATE_FILE\" ]]; then
     LAST=\$(cat \"\$STATE_FILE\" 2>/dev/null || echo 0)
     ELAPSED=\$((NOW - LAST))
     if [[ \$ELAPSED -lt $DEBOUNCE ]]; then
-        logger -t arm-drive-watcher \"Debounce: skipping restart (\${ELAPSED}s < ${DEBOUNCE}s since last)\"
+        logger -t arm-drive-watcher \"Debounce [\$DEBOUNCE_DEVICE]: skipping restart (\${ELAPSED}s < ${DEBOUNCE}s since last)\"
         exit 0
     fi
 fi
@@ -327,13 +337,13 @@ UDEVEOF
 [Unit]
 Description=ARM Drive Watcher - Restart ARM container for %i
 After=docker.service
-StartLimitIntervalSec=60
-StartLimitBurst=3
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=oneshot
 RemainAfterExit=no
-ExecStart=$HELPER_SCRIPT
+ExecStart=$HELPER_SCRIPT %i
 StandardOutput=journal
 StandardError=journal
 SVCEOF
@@ -358,8 +368,8 @@ elif [[ "$MODE" == "device" ]]; then
 Description=ARM Drive Watcher - Restart ARM on drive connection
 BindsTo=${DEVICE_UNIT}
 After=${DEVICE_UNIT} docker.service
-StartLimitIntervalSec=60
-StartLimitBurst=3
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=oneshot
