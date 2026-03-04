@@ -54,6 +54,8 @@ jobs:
           file: Dockerfile
           push: true
           platforms: linux/amd64
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,scope=base,mode=max
           build-args: HANDBRAKE_TAG=${{ steps.hb_version.outputs.version }}
           tags: |
             ${{ env.DOCKERHUB_BASE }}:${{ steps.version.outputs.version }}
@@ -121,6 +123,8 @@ jobs:
           file: Dockerfile.${{ matrix.variant }}
           push: true
           platforms: linux/amd64
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,scope=${{ matrix.variant }},mode=max
           build-args: BASE_TAG=${{ needs.build-base.outputs.version }}
           tags: ${{ steps.tags.outputs.tags }}
           labels: |
