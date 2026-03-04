@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.9.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.4-alpha.1...v10.9.0-alpha.1) (2026-03-04)
+
+
+### Features
+
+* per-device debounce in drive watcher ([776b890](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/776b890f5dd8212c7e06ecfb3cd33208067e4353))
+
 ## [10.8.4-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.3-alpha.1...v10.8.4-alpha.1) (2026-03-03)
 
 
