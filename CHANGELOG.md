@@ -1,5 +1,12 @@
 # Changelog
 
+## [10.9.1-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.9.0-alpha.1...v10.9.1-alpha.1) (2026-03-05)
+
+
+### Bug Fixes
+
+* only restart container when rescan script is missing (rc 126/127) ([83ba5fc](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/commit/83ba5fcd1fda27abb9590bc76ab1bb018abf3a3a))
+
 ## [10.9.0-alpha.1](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/compare/v10.8.4-alpha.1...v10.9.0-alpha.1) (2026-03-04)
 
 
