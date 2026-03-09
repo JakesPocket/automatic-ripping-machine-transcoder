@@ -1,7 +1,9 @@
 [![CI](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/actions/workflows/test.yml/badge.svg)](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/uprightbass360/automatic-ripping-machine-transcoder/graph/badge.svg)](https://codecov.io/gh/uprightbass360/automatic-ripping-machine-transcoder)
 [![GitHub release](https://img.shields.io/github/v/release/uprightbass360/automatic-ripping-machine-transcoder)](https://github.com/uprightbass360/automatic-ripping-machine-transcoder/releases/latest)
-[![Docker Image](https://img.shields.io/docker/v/uprightbass360/arm-transcoder?label=docker)](https://hub.docker.com/r/uprightbass360/arm-transcoder)
+[![NVIDIA](https://img.shields.io/docker/v/uprightbass360/arm-transcoder?label=nvidia)](https://hub.docker.com/r/uprightbass360/arm-transcoder)
+[![AMD](https://img.shields.io/docker/v/uprightbass360/arm-transcoder?tag=latest-amd&label=amd)](https://hub.docker.com/r/uprightbass360/arm-transcoder)
+[![Intel](https://img.shields.io/docker/v/uprightbass360/arm-transcoder?tag=latest-intel&label=intel)](https://hub.docker.com/r/uprightbass360/arm-transcoder)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 # ARM Transcoder
