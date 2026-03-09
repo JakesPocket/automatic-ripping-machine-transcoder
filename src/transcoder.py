@@ -211,6 +211,8 @@ class TranscodeWorker:
         disctype: Optional[str] = None,
         poster_url: Optional[str] = None,
         config_overrides: dict | None = None,
+        multi_title: bool = False,
+        tracks: list[dict] | None = None,
     ) -> tuple[int, bool]:
         """Add a job to the transcode queue.
 
@@ -218,6 +220,7 @@ class TranscodeWorker:
         pending/processing job already covers the same source_path.
         """
         overrides_json = json.dumps(config_overrides) if config_overrides else None
+        track_meta_json = json.dumps(tracks) if tracks else None
         async with self._queue_lock:
             async with get_db() as db:
                 if existing_job_id:
@@ -252,6 +255,8 @@ class TranscodeWorker:
                         disctype=disctype,
                         poster_url=poster_url,
                         config_overrides=overrides_json,
+                        multi_title=1 if multi_title else 0,
+                        track_metadata=track_meta_json,
                         status=JobStatus.PENDING,
                     )
                     db.add(job_db)
@@ -394,6 +399,32 @@ class TranscodeWorker:
             logger.info(f"Per-job overrides: {overrides}")
         return overrides, db_video_type, db_year
 
+    async def _load_track_metadata(self, job_id: int) -> dict[str, dict] | None:
+        """Load per-track metadata from DB. Returns {filename_stem: metadata} map or None."""
+        async with get_db() as db_sess:
+            result = await db_sess.execute(
+                select(TranscodeJobDB).where(TranscodeJobDB.id == job_id)
+            )
+            job_db = result.scalar_one_or_none()
+            if not job_db or not job_db.multi_title or not job_db.track_metadata:
+                return None
+            try:
+                tracks = json.loads(job_db.track_metadata)
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+        # Build lookup by filename stem and track number
+        meta_map: dict[str, dict] = {}
+        for t in tracks:
+            filename = t.get("filename", "")
+            if filename:
+                stem = Path(filename).stem
+                meta_map[stem] = t
+            track_num = t.get("track_number", "")
+            if track_num:
+                meta_map[f"_track_{track_num}"] = t
+        return meta_map if meta_map else None
+
     async def _resolve_and_stabilize(self, job: TranscodeJob) -> None:
         """Resolve the source path and wait for files to stabilize."""
         resolved_path = self._resolve_source_path(job.source_path)
@@ -525,6 +556,9 @@ class TranscodeWorker:
             resolution = await self._get_video_resolution(main_feature)
             await self._update_job(job.id, main_feature_file=main_feature.name)
 
+            # Check for multi-title per-track metadata
+            track_meta = await self._load_track_metadata(job.id)
+
             output_dir = self._determine_output_path(
                 job.title, job.source_path, resolution, overrides,
                 db_year=db_year, db_video_type=db_video_type,
@@ -541,10 +575,41 @@ class TranscodeWorker:
                 job, local_source_files, main_feature, work_output_dir, folder_name, overrides,
             )
 
-            # Move local output → completed
-            logger.info(f"Moving output to completed: {output_dir}")
-            for f in work_output_dir.iterdir():
-                shutil.move(str(f), str(output_dir / f.name))
+            # Move local output → completed (with per-track routing for multi-title)
+            if track_meta:
+                logger.info("Multi-title disc: routing output files per-track metadata")
+                for f in work_output_dir.iterdir():
+                    stem = f.stem
+                    # Try to match by original source filename embedded in output name
+                    matched_meta = None
+                    for src_file in local_source_files:
+                        if src_file.stem in stem:
+                            matched_meta = track_meta.get(src_file.stem)
+                            break
+                    if not matched_meta:
+                        # Fall back to job-level output dir
+                        logger.debug(f"No per-track match for {f.name}, using job output dir")
+                        shutil.move(str(f), str(output_dir / f.name))
+                        continue
+
+                    # Build per-track output path
+                    per_title = matched_meta.get("title", job.title)
+                    per_year = matched_meta.get("year", db_year)
+                    per_video_type = matched_meta.get("video_type", db_video_type)
+                    per_output_dir = self._determine_output_path(
+                        per_title, job.source_path, resolution, overrides,
+                        db_year=per_year, db_video_type=per_video_type,
+                    )
+                    os.makedirs(per_output_dir, exist_ok=True)
+                    # Rename the output file to match the per-track title
+                    per_folder_name = per_output_dir.name
+                    new_name = f"{per_folder_name}{f.suffix}"
+                    logger.info(f"Moving {f.name} → {per_output_dir / new_name}")
+                    shutil.move(str(f), str(per_output_dir / new_name))
+            else:
+                logger.info(f"Moving output to completed: {output_dir}")
+                for f in work_output_dir.iterdir():
+                    shutil.move(str(f), str(output_dir / f.name))
 
             await self._update_job(
                 job.id,

@@ -418,6 +418,8 @@ async def arm_webhook(
         disctype=payload.disctype,
         poster_url=payload.poster_url,
         config_overrides=payload.config_overrides,
+        multi_title=bool(payload.multi_title),
+        tracks=payload.tracks,
     )
 
     return {

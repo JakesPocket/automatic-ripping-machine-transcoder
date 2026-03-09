@@ -48,6 +48,8 @@ def _add_missing_columns(conn):
             ("logfile", "VARCHAR(255)"),
             ("poster_url", "VARCHAR(500)"),
             ("config_overrides", "TEXT"),
+            ("multi_title", "INTEGER DEFAULT 0"),
+            ("track_metadata", "TEXT"),
         ]
         for col_name, col_type in migrations:
             if col_name not in existing:

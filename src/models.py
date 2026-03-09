@@ -64,6 +64,8 @@ class TranscodeJobDB(Base):
     logfile = Column(String(255), nullable=True)
     poster_url = Column(String(500), nullable=True)
     config_overrides = Column(Text, nullable=True)  # JSON dict of per-job transcode overrides
+    multi_title = Column(Integer, default=0)  # Boolean: 1 if multi-title disc
+    track_metadata = Column(Text, nullable=True)  # JSON list of per-track metadata dicts
 
 
 class WebhookPayload(BaseModel):
@@ -81,6 +83,8 @@ class WebhookPayload(BaseModel):
     disctype: Optional[str] = Field(None, max_length=50)
     poster_url: Optional[str] = Field(None, max_length=500)
     config_overrides: Optional[dict] = Field(None)
+    multi_title: Optional[bool] = Field(None)
+    tracks: Optional[list[dict]] = Field(None)
 
     @property
     def effective_body(self) -> Optional[str]:
