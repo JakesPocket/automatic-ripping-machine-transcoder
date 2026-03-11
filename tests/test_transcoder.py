@@ -1489,5 +1489,370 @@ class TestDiskSpacePreCheck:
         await engine.dispose()
 
 
+# ─── _load_track_metadata ──────────────────────────────────────────────────
+
+
+class TestLoadTrackMetadata:
+    """Tests for TranscodeWorker._load_track_metadata."""
+
+    def _make_worker(self):
+        with patch("transcoder.check_gpu_support", return_value=_gpu_support_all()):
+            from transcoder import TranscodeWorker
+            return TranscodeWorker()
+
+    async def _setup_db(self, tmp_path):
+        """Create a test DB engine and session factory."""
+        from contextlib import asynccontextmanager
+        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+        from models import Base
+
+        db_path = str(tmp_path / "track_meta_test.db")
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        @asynccontextmanager
+        async def test_get_db():
+            async with session_factory() as session:
+                try:
+                    yield session
+                except Exception:
+                    await session.rollback()
+                    raise
+
+        return engine, session_factory, test_get_db
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_multi_title(self, tmp_path):
+        """Should return None when multi_title is 0 (not a multi-title disc)."""
+        import json
+        from models import TranscodeJobDB, JobStatus
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+
+        # Create a job with multi_title=0
+        async with session_factory() as session:
+            job_db = TranscodeJobDB(
+                title="SingleTitle",
+                source_path="/data/raw/movie",
+                status=JobStatus.PENDING,
+                multi_title=0,
+                track_metadata=json.dumps([{"track_number": 1, "filename": "t01.mkv"}]),
+            )
+            session.add(job_db)
+            await session.commit()
+            await session.refresh(job_db)
+            job_id = job_db.id
+
+        worker = self._make_worker()
+        with patch("transcoder.get_db", test_get_db):
+            result = await worker._load_track_metadata(job_id)
+
+        assert result is None
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_track_metadata(self, tmp_path):
+        """Should return None when track_metadata is NULL."""
+        from models import TranscodeJobDB, JobStatus
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+
+        async with session_factory() as session:
+            job_db = TranscodeJobDB(
+                title="NoMetadata",
+                source_path="/data/raw/movie",
+                status=JobStatus.PENDING,
+                multi_title=1,
+                track_metadata=None,
+            )
+            session.add(job_db)
+            await session.commit()
+            await session.refresh(job_db)
+            job_id = job_db.id
+
+        worker = self._make_worker()
+        with patch("transcoder.get_db", test_get_db):
+            result = await worker._load_track_metadata(job_id)
+
+        assert result is None
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_nonexistent_job(self, tmp_path):
+        """Should return None when the job ID does not exist."""
+        engine, _session_factory, test_get_db = await self._setup_db(tmp_path)
+
+        worker = self._make_worker()
+        with patch("transcoder.get_db", test_get_db):
+            result = await worker._load_track_metadata(99999)
+
+        assert result is None
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_invalid_json(self, tmp_path):
+        """Should return None when track_metadata contains invalid JSON."""
+        from models import TranscodeJobDB, JobStatus
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+
+        async with session_factory() as session:
+            job_db = TranscodeJobDB(
+                title="BadJSON",
+                source_path="/data/raw/movie",
+                status=JobStatus.PENDING,
+                multi_title=1,
+                track_metadata="not-valid-json{{{",
+            )
+            session.add(job_db)
+            await session.commit()
+            await session.refresh(job_db)
+            job_id = job_db.id
+
+        worker = self._make_worker()
+        with patch("transcoder.get_db", test_get_db):
+            result = await worker._load_track_metadata(job_id)
+
+        assert result is None
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_returns_map_keyed_by_filename_stem(self, tmp_path):
+        """Should return metadata map keyed by filename stem."""
+        import json
+        from models import TranscodeJobDB, JobStatus
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+
+        tracks = [
+            {"track_number": 1, "filename": "title_t01.mkv", "title": "Episode 1"},
+            {"track_number": 2, "filename": "title_t02.mkv", "title": "Episode 2"},
+        ]
+        async with session_factory() as session:
+            job_db = TranscodeJobDB(
+                title="MultiTitle",
+                source_path="/data/raw/series",
+                status=JobStatus.PENDING,
+                multi_title=1,
+                track_metadata=json.dumps(tracks),
+            )
+            session.add(job_db)
+            await session.commit()
+            await session.refresh(job_db)
+            job_id = job_db.id
+
+        worker = self._make_worker()
+        with patch("transcoder.get_db", test_get_db):
+            result = await worker._load_track_metadata(job_id)
+
+        assert result is not None
+        # Keyed by filename stem (without extension)
+        assert "title_t01" in result
+        assert "title_t02" in result
+        assert result["title_t01"]["title"] == "Episode 1"
+        assert result["title_t02"]["title"] == "Episode 2"
+        # Also keyed by track number
+        assert "_track_1" in result
+        assert "_track_2" in result
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_empty_tracks_list(self, tmp_path):
+        """Should return None when tracks list is empty (no entries produce keys)."""
+        import json
+        from models import TranscodeJobDB, JobStatus
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+
+        async with session_factory() as session:
+            job_db = TranscodeJobDB(
+                title="EmptyTracks",
+                source_path="/data/raw/movie",
+                status=JobStatus.PENDING,
+                multi_title=1,
+                track_metadata=json.dumps([]),
+            )
+            session.add(job_db)
+            await session.commit()
+            await session.refresh(job_db)
+            job_id = job_db.id
+
+        worker = self._make_worker()
+        with patch("transcoder.get_db", test_get_db):
+            result = await worker._load_track_metadata(job_id)
+
+        assert result is None
+        await engine.dispose()
+
+
+# ─── queue_job multi-title support ─────────────────────────────────────────
+
+
+class TestQueueJobMultiTitle:
+    """Tests for queue_job() storing multi_title and track_metadata in DB."""
+
+    def _make_worker(self):
+        with patch("transcoder.check_gpu_support", return_value=_gpu_support_all()):
+            from transcoder import TranscodeWorker
+            return TranscodeWorker()
+
+    async def _setup_db(self, tmp_path):
+        """Create a test DB engine and session factory."""
+        from contextlib import asynccontextmanager
+        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+        from models import Base
+
+        db_path = str(tmp_path / "queue_job_test.db")
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        @asynccontextmanager
+        async def test_get_db():
+            async with session_factory() as session:
+                try:
+                    yield session
+                except Exception:
+                    await session.rollback()
+                    raise
+
+        return engine, session_factory, test_get_db
+
+    @pytest.mark.asyncio
+    async def test_stores_multi_title_true(self, tmp_path):
+        """queue_job with multi_title=True should store multi_title=1 in DB."""
+        import json
+        from sqlalchemy import select
+        from models import TranscodeJobDB
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+        worker = self._make_worker()
+
+        tracks = [
+            {"track_number": 1, "filename": "t01.mkv", "title": "Ep 1"},
+            {"track_number": 2, "filename": "t02.mkv", "title": "Ep 2"},
+        ]
+
+        with patch("transcoder.get_db", test_get_db):
+            job_id, created = await worker.queue_job(
+                source_path="/data/raw/series",
+                title="Series",
+                multi_title=True,
+                tracks=tracks,
+            )
+
+        assert created is True
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(TranscodeJobDB).where(TranscodeJobDB.id == job_id)
+            )
+            job_db = result.scalar_one()
+            assert job_db.multi_title == 1
+            assert job_db.track_metadata is not None
+            stored_tracks = json.loads(job_db.track_metadata)
+            assert len(stored_tracks) == 2
+            assert stored_tracks[0]["filename"] == "t01.mkv"
+            assert stored_tracks[1]["title"] == "Ep 2"
+
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_stores_multi_title_false(self, tmp_path):
+        """queue_job with multi_title=False should store multi_title=0 in DB."""
+        from sqlalchemy import select
+        from models import TranscodeJobDB
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+        worker = self._make_worker()
+
+        with patch("transcoder.get_db", test_get_db):
+            job_id, created = await worker.queue_job(
+                source_path="/data/raw/movie",
+                title="Movie",
+                multi_title=False,
+                tracks=None,
+            )
+
+        assert created is True
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(TranscodeJobDB).where(TranscodeJobDB.id == job_id)
+            )
+            job_db = result.scalar_one()
+            assert job_db.multi_title == 0
+            assert job_db.track_metadata is None
+
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_default_multi_title_is_zero(self, tmp_path):
+        """queue_job without multi_title arg should default to multi_title=0."""
+        from sqlalchemy import select
+        from models import TranscodeJobDB
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+        worker = self._make_worker()
+
+        with patch("transcoder.get_db", test_get_db):
+            job_id, created = await worker.queue_job(
+                source_path="/data/raw/movie",
+                title="Movie",
+            )
+
+        assert created is True
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(TranscodeJobDB).where(TranscodeJobDB.id == job_id)
+            )
+            job_db = result.scalar_one()
+            assert job_db.multi_title == 0
+            assert job_db.track_metadata is None
+
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_tracks_without_multi_title_still_stored(self, tmp_path):
+        """Tracks should be stored even if multi_title defaults to False."""
+        import json
+        from sqlalchemy import select
+        from models import TranscodeJobDB
+
+        engine, session_factory, test_get_db = await self._setup_db(tmp_path)
+        worker = self._make_worker()
+
+        tracks = [{"track_number": 1, "filename": "t01.mkv"}]
+
+        with patch("transcoder.get_db", test_get_db):
+            job_id, created = await worker.queue_job(
+                source_path="/data/raw/movie",
+                title="Movie",
+                tracks=tracks,
+            )
+
+        assert created is True
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(TranscodeJobDB).where(TranscodeJobDB.id == job_id)
+            )
+            job_db = result.scalar_one()
+            # multi_title defaults to 0 since not passed
+            assert job_db.multi_title == 0
+            # But tracks are still serialized
+            assert job_db.track_metadata is not None
+            stored = json.loads(job_db.track_metadata)
+            assert len(stored) == 1
+
+        await engine.dispose()
+
+
 # Import settings for use in output path tests
 from config import settings  # noqa: E402

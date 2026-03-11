@@ -147,6 +147,65 @@ class TestWebhookPayload:
         assert payload.path is None
         assert payload.job_id is None
 
+    # ─── Multi-title disc fields ────────────────────────────────────────────
+
+    def test_multi_title_default_none(self):
+        """multi_title should default to None when not provided."""
+        payload = WebhookPayload(title="Test")
+        assert payload.multi_title is None
+
+    def test_multi_title_true(self):
+        """multi_title=True should be accepted."""
+        payload = WebhookPayload(title="Test", multi_title=True)
+        assert payload.multi_title is True
+
+    def test_multi_title_false(self):
+        """multi_title=False should be accepted."""
+        payload = WebhookPayload(title="Test", multi_title=False)
+        assert payload.multi_title is False
+
+    def test_tracks_default_none(self):
+        """tracks should default to None when not provided."""
+        payload = WebhookPayload(title="Test")
+        assert payload.tracks is None
+
+    def test_tracks_empty_list(self):
+        """tracks=[] should be accepted."""
+        payload = WebhookPayload(title="Test", tracks=[])
+        assert payload.tracks == []
+
+    def test_tracks_with_metadata(self):
+        """tracks with per-track metadata dicts should be accepted."""
+        tracks = [
+            {"track_number": 1, "filename": "t01.mkv", "title": "Episode 1", "year": "2024"},
+            {"track_number": 2, "filename": "t02.mkv", "title": "Episode 2", "year": "2024"},
+        ]
+        payload = WebhookPayload(title="Test", multi_title=True, tracks=tracks)
+        assert payload.multi_title is True
+        assert len(payload.tracks) == 2
+        assert payload.tracks[0]["filename"] == "t01.mkv"
+        assert payload.tracks[1]["track_number"] == 2
+
+    def test_multi_title_full_payload(self):
+        """Full payload with multi_title and tracks alongside standard fields."""
+        tracks = [
+            {"track_number": 1, "filename": "main.mkv", "title": "Movie", "video_type": "movie"},
+        ]
+        payload = WebhookPayload(
+            title="ARM notification",
+            body="Rip of Movie (2024) complete",
+            path="Movie (2024)",
+            job_id="42",
+            status="success",
+            type="info",
+            multi_title=True,
+            tracks=tracks,
+        )
+        assert payload.multi_title is True
+        assert len(payload.tracks) == 1
+        assert payload.title == "ARM notification"
+        assert payload.job_id == "42"
+
     # ─── Apprise message field support ──────────────────────────────────────
 
     def test_apprise_message_field_accepted(self):
