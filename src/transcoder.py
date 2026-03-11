@@ -413,17 +413,51 @@ class TranscodeWorker:
             except (json.JSONDecodeError, TypeError):
                 return None
 
-        # Build lookup by filename stem and track number
+        # Build lookup by filename stem (exact + normalized) and track number.
+        # Multiple keys per track improves match resilience if ARM renames files.
         meta_map: dict[str, dict] = {}
         for t in tracks:
             filename = t.get("filename", "")
             if filename:
                 stem = Path(filename).stem
                 meta_map[stem] = t
+                # Normalized key: lowercase, underscores for spaces
+                normalized = stem.lower().replace(" ", "_")
+                if normalized != stem:
+                    meta_map[normalized] = t
             track_num = t.get("track_number", "")
             if track_num:
                 meta_map[f"_track_{track_num}"] = t
         return meta_map if meta_map else None
+
+    def _match_track_metadata(
+        self, output_stem: str, source_files: list[Path],
+        track_meta: dict[str, dict],
+    ) -> dict | None:
+        """Match an output file to its track metadata.
+
+        Tries multiple strategies: exact stem match, substring match,
+        and normalized (lowercase/underscore) match.
+        """
+        # Strategy 1: source filename embedded in output name (existing behavior)
+        for src_file in source_files:
+            if src_file.stem in output_stem:
+                meta = track_meta.get(src_file.stem)
+                if meta:
+                    return meta
+
+        # Strategy 2: direct lookup by output stem
+        meta = track_meta.get(output_stem)
+        if meta:
+            return meta
+
+        # Strategy 3: normalized comparison
+        norm_stem = output_stem.lower().replace(" ", "_")
+        meta = track_meta.get(norm_stem)
+        if meta:
+            return meta
+
+        return None
 
     async def _resolve_and_stabilize(self, job: TranscodeJob) -> None:
         """Resolve the source path and wait for files to stabilize."""
@@ -456,10 +490,17 @@ class TranscodeWorker:
     async def _transcode_files(
         self, job: TranscodeJob, local_source_files: list[Path],
         main_feature: Path, work_output_dir: Path, folder_name: str,
-        overrides: dict | None,
-    ) -> None:
-        """Transcode all source files to the work output directory."""
+        overrides: dict | None, *, multi_title: bool = False,
+    ) -> list[dict]:
+        """Transcode all source files to the work output directory.
+
+        Returns a list of per-file results for multi-title tracking:
+        ``[{"file": "name.mkv", "status": "completed"|"failed", "error": "..."}]``
+
+        When *multi_title* is True, a single track failure does not abort the job.
+        """
         ext = self._effective("output_extension", overrides)
+        file_results: list[dict] = []
         for i, source_file in enumerate(local_source_files):
             progress = (i / len(local_source_files)) * 100
             await self._update_progress(job.id, progress)
@@ -475,10 +516,25 @@ class TranscodeWorker:
                 f"{' (main feature)' if is_main else ''}"
             )
 
-            if self._encoder_backend == "ffmpeg":
-                await self._transcode_file_ffmpeg(source_file, output_file, job.id, overrides=overrides)
-            else:
-                await self._transcode_file_handbrake(source_file, output_file, job.id, overrides=overrides)
+            try:
+                if self._encoder_backend == "ffmpeg":
+                    await self._transcode_file_ffmpeg(source_file, output_file, job.id, overrides=overrides)
+                else:
+                    await self._transcode_file_handbrake(source_file, output_file, job.id, overrides=overrides)
+                file_results.append({"file": source_file.name, "status": "completed"})
+            except Exception as e:
+                if multi_title:
+                    logger.error(
+                        f"Track {i+1} ({source_file.name}) failed, continuing: {e}",
+                        exc_info=True,
+                    )
+                    file_results.append({
+                        "file": source_file.name, "status": "failed",
+                        "error": str(e)[:200],
+                    })
+                else:
+                    raise  # single-title: fail the whole job as before
+        return file_results
 
     async def _process_job(self, job: TranscodeJob):
         """Process a single transcode job.
@@ -571,52 +627,93 @@ class TranscodeWorker:
                 output_path=str(output_dir),
             )
 
-            await self._transcode_files(
-                job, local_source_files, main_feature, work_output_dir, folder_name, overrides,
+            is_multi = bool(track_meta)
+            file_results = await self._transcode_files(
+                job, local_source_files, main_feature, work_output_dir,
+                folder_name, overrides, multi_title=is_multi,
             )
 
             # Move local output → completed (with per-track routing for multi-title)
+            track_results = []
             if track_meta:
                 logger.info("Multi-title disc: routing output files per-track metadata")
                 for f in work_output_dir.iterdir():
-                    stem = f.stem
-                    # Try to match by original source filename embedded in output name
-                    matched_meta = None
-                    for src_file in local_source_files:
-                        if src_file.stem in stem:
-                            matched_meta = track_meta.get(src_file.stem)
-                            break
+                    matched_meta = self._match_track_metadata(
+                        f.stem, local_source_files, track_meta,
+                    )
                     if not matched_meta:
                         # Fall back to job-level output dir
                         logger.debug(f"No per-track match for {f.name}, using job output dir")
                         shutil.move(str(f), str(output_dir / f.name))
                         continue
 
-                    # Build per-track output path
-                    per_title = matched_meta.get("title", job.title)
-                    per_year = matched_meta.get("year", db_year)
-                    per_video_type = matched_meta.get("video_type", db_video_type)
-                    per_output_dir = self._determine_output_path(
-                        per_title, job.source_path, resolution, overrides,
-                        db_year=per_year, db_video_type=per_video_type,
-                    )
-                    os.makedirs(per_output_dir, exist_ok=True)
-                    # Rename the output file to match the per-track title
-                    per_folder_name = per_output_dir.name
-                    new_name = f"{per_folder_name}{f.suffix}"
-                    logger.info(f"Moving {f.name} → {per_output_dir / new_name}")
-                    shutil.move(str(f), str(per_output_dir / new_name))
+                    track_num = matched_meta.get("track_number", "")
+                    try:
+                        # Build per-track output path
+                        per_title = matched_meta.get("title", job.title)
+                        per_year = matched_meta.get("year", db_year)
+                        per_video_type = matched_meta.get("video_type", db_video_type)
+                        per_output_dir = self._determine_output_path(
+                            per_title, job.source_path, resolution, overrides,
+                            db_year=per_year, db_video_type=per_video_type,
+                        )
+                        os.makedirs(per_output_dir, exist_ok=True)
+                        # Rename the output file to match the per-track title
+                        per_folder_name = per_output_dir.name
+                        new_name = f"{per_folder_name}{f.suffix}"
+                        logger.info(f"Moving {f.name} → {per_output_dir / new_name}")
+                        shutil.move(str(f), str(per_output_dir / new_name))
+                        track_results.append({
+                            "track_number": track_num,
+                            "status": "completed",
+                            "output_path": str(per_output_dir / new_name),
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to route track {track_num} ({f.name}): {e}")
+                        # Move to job-level dir as fallback
+                        try:
+                            shutil.move(str(f), str(output_dir / f.name))
+                        except Exception:
+                            pass
+                        track_results.append({
+                            "track_number": track_num,
+                            "status": "failed",
+                            "error": str(e)[:200],
+                        })
             else:
                 logger.info(f"Moving output to completed: {output_dir}")
                 for f in work_output_dir.iterdir():
                     shutil.move(str(f), str(output_dir / f.name))
 
-            await self._update_job(
-                job.id,
-                status=JobStatus.COMPLETED,
-                progress=100.0,
-                completed_at=datetime.now(timezone.utc),
-            )
+            # Merge transcode file_results into track_results for the callback
+            failed_transcodes = [r for r in file_results if r.get("status") == "failed"]
+            failed_routes = [r for r in track_results if r.get("status") == "failed"]
+            all_track_results = track_results or []
+
+            # Determine overall status
+            total_failures = len(failed_transcodes) + len(failed_routes)
+            if total_failures > 0 and total_failures < len(local_source_files):
+                # Some tracks failed but others succeeded
+                final_status = JobStatus.COMPLETED
+                callback_status = "partial"
+                error_summary = f"{total_failures}/{len(local_source_files)} tracks failed"
+                await self._update_job(
+                    job.id,
+                    status=final_status,
+                    progress=100.0,
+                    completed_at=datetime.now(timezone.utc),
+                    error=error_summary,
+                )
+            elif total_failures >= len(local_source_files):
+                raise RuntimeError(f"All {len(local_source_files)} tracks failed to transcode")
+            else:
+                callback_status = "completed"
+                await self._update_job(
+                    job.id,
+                    status=JobStatus.COMPLETED,
+                    progress=100.0,
+                    completed_at=datetime.now(timezone.utc),
+                )
 
             if self._effective("delete_source", overrides):
                 try:
@@ -626,7 +723,9 @@ class TranscodeWorker:
                     logger.warning(f"Could not clean up source: {e}")
 
             logger.info(f"Completed job {job.id}: {job.title}")
-            await self._notify_arm_callback(job, "completed")
+            await self._notify_arm_callback(
+                job, callback_status, track_results=all_track_results,
+            )
 
         except Exception as e:
             logger.error(f"Job {job.id} failed: {e}", exc_info=True)
@@ -743,7 +842,11 @@ class TranscodeWorker:
 
         logger.info(f"Source stabilized at {last_size} bytes")
 
-    async def _notify_arm_callback(self, job: TranscodeJob, status: str, error: str | None = None):
+    async def _notify_arm_callback(
+        self, job: TranscodeJob, status: str, *,
+        error: str | None = None,
+        track_results: list[dict] | None = None,
+    ):
         """Send transcode result back to ARM so it can update the job status."""
         if not settings.arm_callback_url or not job.arm_job_id:
             return
@@ -751,6 +854,8 @@ class TranscodeWorker:
         payload: dict = {"status": status}
         if error:
             payload["error"] = error[:500]
+        if track_results:
+            payload["track_results"] = track_results
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(url, json=payload)
