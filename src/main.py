@@ -201,8 +201,8 @@ async def get_system_stats():
     storage = []
     media_paths = [
         ("Raw", settings.raw_path),
-        ("Completed", settings.completed_path),
         ("Work", settings.work_path),
+        ("Completed", settings.completed_path),
     ]
     for name, path in media_paths:
         try:
