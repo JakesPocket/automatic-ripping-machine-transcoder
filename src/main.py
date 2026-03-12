@@ -202,10 +202,11 @@ async def get_system_stats():
     # GPU utilization and temperature via nvidia-smi
     gpu_percent = 0.0
     gpu_temp = 0.0
+    gpu_memory = None
     try:
         import subprocess
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu",
+            ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=5
         )
@@ -213,6 +214,17 @@ async def get_system_stats():
             parts = result.stdout.strip().splitlines()[0].split(",")
             gpu_percent = float(parts[0].strip())
             gpu_temp = float(parts[1].strip())
+            vram_used_mib = float(parts[2].strip())
+            vram_total_mib = float(parts[3].strip())
+            vram_used_gb = round(vram_used_mib / 1024, 2)
+            vram_total_gb = round(vram_total_mib / 1024, 1)
+            vram_percent = round((vram_used_mib / vram_total_mib) * 100, 1) if vram_total_mib > 0 else 0.0
+            gpu_memory = {
+                "total_gb": vram_total_gb,
+                "used_gb": vram_used_gb,
+                "free_gb": round(vram_total_gb - vram_used_gb, 2),
+                "percent": vram_percent,
+            }
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError, ValueError, IndexError):
         pass
 
@@ -243,6 +255,7 @@ async def get_system_stats():
         "cpu_temp": cpu_temp,
         "gpu_percent": gpu_percent,
         "gpu_temp": gpu_temp,
+        "gpu_memory": gpu_memory,
         "memory": {
             "total_gb": round(mem.total / 1073741824, 1),
             "used_gb": round(mem.used / 1073741824, 1),
