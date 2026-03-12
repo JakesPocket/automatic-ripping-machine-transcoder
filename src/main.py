@@ -180,13 +180,14 @@ async def get_system_info():
         "cpu": _detect_cpu(),
         "memory_total_gb": round(mem.total / 1073741824, 1),
         "gpu_name": gpu_support.get("gpu_name"),
+        "gpu_vram_gb": gpu_support.get("gpu_vram_gb"),
         "gpu_support": gpu_support,
     }
 
 
 @app.get("/system/stats")
 async def get_system_stats():
-    """Return live system metrics: CPU, memory, temperature. No auth required."""
+    """Return live system metrics: CPU, memory, GPU, temperature. No auth required."""
     cpu_percent = psutil.cpu_percent()
     cpu_temp = 0.0
     try:
@@ -196,6 +197,23 @@ async def get_system_stats():
                 cpu_temp = temps[key][0].current
                 break
     except (AttributeError, OSError):
+        pass
+
+    # GPU utilization and temperature via nvidia-smi
+    gpu_percent = 0.0
+    gpu_temp = 0.0
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().splitlines()[0].split(",")
+            gpu_percent = float(parts[0].strip())
+            gpu_temp = float(parts[1].strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError, ValueError, IndexError):
         pass
 
     mem = psutil.virtual_memory()
@@ -223,6 +241,8 @@ async def get_system_stats():
     return {
         "cpu_percent": cpu_percent,
         "cpu_temp": cpu_temp,
+        "gpu_percent": gpu_percent,
+        "gpu_temp": gpu_temp,
         "memory": {
             "total_gb": round(mem.total / 1073741824, 1),
             "used_gb": round(mem.used / 1073741824, 1),

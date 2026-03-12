@@ -65,10 +65,27 @@ def _detect_gpu_name() -> str | None:
     return None
 
 
+def _detect_gpu_vram() -> float | None:
+    """Detect total GPU VRAM in GB via nvidia-smi, or return None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # nvidia-smi reports memory in MiB
+            mib = float(result.stdout.strip().splitlines()[0].strip())
+            return round(mib / 1024, 1)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError, ValueError):
+        pass
+    return None
+
+
 def check_gpu_support() -> dict:
     """Check which GPU encoders are available (NVENC, VAAPI, AMF, QSV)."""
     result = {
         "gpu_name": _detect_gpu_name(),
+        "gpu_vram_gb": _detect_gpu_vram(),
         "handbrake_nvenc": False,
         "handbrake_qsv": False,
         "ffmpeg_nvenc_h265": False,
