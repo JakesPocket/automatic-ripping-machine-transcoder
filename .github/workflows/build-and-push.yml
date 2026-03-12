@@ -21,16 +21,18 @@ permissions:
   contents: read
   packages: write
 
-env:
-  GHCR_BASE: ghcr.io/${{ github.repository_owner }}/arm-transcoder-base
-  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/arm-transcoder
-
 jobs:
   build-base:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Set image names
+        id: image
+        run: |
+          echo "base=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/arm-transcoder-base" >> "$GITHUB_OUTPUT"
+          echo "variant=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/arm-transcoder" >> "$GITHUB_OUTPUT"
 
       - name: Read VERSION file
         id: version
@@ -61,14 +63,16 @@ jobs:
           cache-to: type=gha,scope=base,mode=max
           build-args: HANDBRAKE_TAG=${{ steps.hb_version.outputs.version }}
           tags: |
-            ${{ env.GHCR_BASE }}:${{ steps.version.outputs.version }}
-            ${{ env.GHCR_BASE }}:latest
+            ${{ steps.image.outputs.base }}:${{ steps.version.outputs.version }}
+            ${{ steps.image.outputs.base }}:latest
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
     outputs:
       version: ${{ steps.version.outputs.version }}
+      base_image: ${{ steps.image.outputs.base }}
+      variant_image: ${{ steps.image.outputs.variant }}
 
   build-variant:
     needs: build-base
@@ -103,10 +107,11 @@ jobs:
         run: |
           VERSION="${{ needs.build-base.outputs.version }}"
           SUFFIX="${{ steps.variant.outputs.suffix }}"
-          TAGS="${{ env.GHCR_IMAGE }}:${VERSION}${SUFFIX}"
+          IMAGE="${{ needs.build-base.outputs.variant_image }}"
+          TAGS="${IMAGE}:${VERSION}${SUFFIX}"
           if [ -z "$SUFFIX" ]; then
-            TAGS="${TAGS},${{ env.GHCR_IMAGE }}:latest"
-            TAGS="${TAGS},${{ env.GHCR_IMAGE }}:${VERSION}-nvidia"
+            TAGS="${TAGS},${IMAGE}:latest"
+            TAGS="${TAGS},${IMAGE}:${VERSION}-nvidia"
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
@@ -115,7 +120,7 @@ jobs:
           VARIANT="${{ steps.variant.outputs.variant }}"
           DOCKERFILE="Dockerfile.${VARIANT}"
           # Replace upstream base image reference with our own GHCR base
-          sed -i "s|uprightbass360/arm-transcoder-base|${{ env.GHCR_BASE }}|g" "$DOCKERFILE"
+          sed -i "s|uprightbass360/arm-transcoder-base|${{ needs.build-base.outputs.base_image }}|g" "$DOCKERFILE"
 
       - name: Build and push GPU variant
         uses: docker/build-push-action@v6
