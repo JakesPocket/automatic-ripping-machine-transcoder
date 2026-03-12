@@ -175,10 +175,12 @@ def _detect_cpu() -> str:
 async def get_system_info():
     """Return static hardware identity (CPU, RAM, GPU). No auth required."""
     mem = psutil.virtual_memory()
+    gpu_support = worker.gpu_support if worker else {}
     return {
         "cpu": _detect_cpu(),
         "memory_total_gb": round(mem.total / 1073741824, 1),
-        "gpu_support": worker.gpu_support if worker else {},
+        "gpu_name": gpu_support.get("gpu_name"),
+        "gpu_support": gpu_support,
     }
 
 

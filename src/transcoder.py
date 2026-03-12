@@ -33,9 +33,42 @@ logger = logging.getLogger(__name__)
 _MKV_GLOB = "*.mkv"
 
 
+def _detect_gpu_name() -> str | None:
+    """Detect GPU model name via nvidia-smi, or return None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Return first GPU if multiple are present
+            return result.stdout.strip().splitlines()[0].strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+    # Fallback: check /proc/driver/nvidia/gpus or lspci
+    try:
+        result = subprocess.run(
+            ["lspci"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if "VGA" in line or "3D controller" in line:
+                    # Extract the device name after the colon
+                    parts = line.split(": ", 1)
+                    if len(parts) == 2:
+                        return parts[1].strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+    return None
+
+
 def check_gpu_support() -> dict:
     """Check which GPU encoders are available (NVENC, VAAPI, AMF, QSV)."""
     result = {
+        "gpu_name": _detect_gpu_name(),
         "handbrake_nvenc": False,
         "handbrake_qsv": False,
         "ffmpeg_nvenc_h265": False,
