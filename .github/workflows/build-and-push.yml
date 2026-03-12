@@ -1,0 +1,133 @@
+name: Build and Push to GHCR
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "GPU variant to build (nvidia, amd, intel)"
+        required: false
+        default: "nvidia"
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_BASE: ghcr.io/${{ github.repository_owner }}/arm-transcoder-base
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/arm-transcoder
+
+jobs:
+  build-base:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Read VERSION file
+        id: version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Read HandBrake version
+        id: hb_version
+        run: echo "version=$(cat VERSION_HANDBRAKE)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,scope=base,mode=max
+          build-args: HANDBRAKE_TAG=${{ steps.hb_version.outputs.version }}
+          tags: |
+            ${{ env.GHCR_BASE }}:${{ steps.version.outputs.version }}
+            ${{ env.GHCR_BASE }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+  build-variant:
+    needs: build-base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine variant
+        id: variant
+        run: |
+          VARIANT="${{ github.event.inputs.variant || 'nvidia' }}"
+          echo "variant=${VARIANT}" >> "$GITHUB_OUTPUT"
+          if [ "$VARIANT" = "nvidia" ]; then
+            echo "suffix=" >> "$GITHUB_OUTPUT"
+          else
+            echo "suffix=-${VARIANT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          VERSION="${{ needs.build-base.outputs.version }}"
+          SUFFIX="${{ steps.variant.outputs.suffix }}"
+          TAGS="${{ env.GHCR_IMAGE }}:${VERSION}${SUFFIX}"
+          if [ -z "$SUFFIX" ]; then
+            TAGS="${TAGS},${{ env.GHCR_IMAGE }}:latest"
+            TAGS="${TAGS},${{ env.GHCR_IMAGE }}:${VERSION}-nvidia"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Update base image reference
+        run: |
+          VARIANT="${{ steps.variant.outputs.variant }}"
+          DOCKERFILE="Dockerfile.${VARIANT}"
+          # Replace upstream base image reference with our own GHCR base
+          sed -i "s|uprightbass360/arm-transcoder-base|${{ env.GHCR_BASE }}|g" "$DOCKERFILE"
+
+      - name: Build and push GPU variant
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.${{ steps.variant.outputs.variant }}
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=${{ steps.variant.outputs.variant }}
+          cache-to: type=gha,scope=${{ steps.variant.outputs.variant }},mode=max
+          build-args: BASE_TAG=${{ needs.build-base.outputs.version }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.build-base.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
